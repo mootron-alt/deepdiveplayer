@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Dive Player</title>
+    <link rel="stylesheet" href="style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- API Key Banner -->
+    <div id="api-key-banner" class="api-key-banner">
+        <span>Enter your YouTube Data API key to get started</span>
+        <input type="text" id="api-key-input" placeholder="Paste your API key here..." spellcheck="false">
+        <button id="save-key-btn">Save</button>
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="get-key-link">Get a free key</a>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <div class="header-left">
+            <h1 class="logo">DEEP DIVE<span class="logo-accent">PLAYER</span></h1>
+            <p class="tagline">the music + the story behind it</p>
+        </div>
+        <button id="settings-btn" class="settings-btn" title="API Key Settings">&#9881;</button>
+    </header>
+
+    <!-- Search -->
+    <div class="search-container">
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search artist, song, or both..." autocomplete="off" spellcheck="false">
+            <button id="search-btn">DIVE IN</button>
+            <button id="add-btn" class="add-btn" title="Add to queue">+ ADD</button>
+        </div>
+        <div id="search-status" class="search-status"></div>
+    </div>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Player -->
+        <div class="player-section">
+            <div id="player-wrapper" class="player-wrapper">
+                <div id="player-placeholder" class="player-placeholder">
+                    <div class="placeholder-icon">&#9654;</div>
+                    <p>Search for a song to start your deep dive</p>
+                </div>
+                <div id="player"></div>
+            </div>
+            <div id="now-playing" class="now-playing hidden">
+                <span id="now-playing-label" class="now-playing-label"></span>
+                <span id="clip-badge" class="clip-badge hidden"></span>
+                <span id="now-playing-title" class="now-playing-title"></span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div id="controls" class="controls hidden">
+            <button id="prev-btn" class="control-btn" title="Previous">&#9664;&#9664;</button>
+            <button id="play-pause-btn" class="control-btn" title="Play/Pause">&#9654;</button>
+            <button id="next-btn" class="control-btn" title="Next">&#9654;&#9654;</button>
+            <button id="skip-btn" class="control-btn skip-btn" title="Skip to next video">SKIP &#9654;&#9654;</button>
+        </div>
+
+        <!-- Playlist -->
+        <div id="playlist-section" class="playlist-section hidden">
+            <h2 class="playlist-header">
+                <span class="playlist-title">PLAYLIST</span>
+                <span id="playlist-count" class="playlist-count"></span>
+            </h2>
+            <div id="playlist" class="playlist"></div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Deep Dive Player &mdash; Prototype</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
