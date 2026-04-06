@@ -324,13 +324,14 @@ main {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 12px 8px;
-    background: rgba(255, 255, 255, 0.04);
+    gap: 0;
+    padding: 0;
+    background: var(--bg-card);
     border: 1px solid transparent;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.25s ease;
+    overflow: hidden;
 }
 
 .trending-card:hover {
@@ -341,16 +342,17 @@ main {
 }
 
 .trending-thumb {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
+    width: 100%;
+    height: 90px;
+    border-radius: 6px;
     object-fit: cover;
-    border: 2px solid var(--border);
-    transition: border-color 0.2s;
+    object-position: center;
+    border: none;
+    transition: transform 0.2s;
 }
 
 .trending-card:hover .trending-thumb {
-    border-color: var(--accent);
+    transform: scale(1.05);
 }
 
 .trending-name {
@@ -363,6 +365,7 @@ main {
     text-overflow: ellipsis;
     max-width: 100%;
     line-height: 1.3;
+    padding: 8px 6px;
 }
 
 .trending-grid.fade-out {
@@ -1060,12 +1063,7 @@ footer {
     }
 
     .trending-thumb {
-        width: 56px;
-        height: 56px;
-    }
-
-    .trending-card {
-        padding: 8px 6px;
+        height: 70px;
     }
 
     .playlist-item-thumb {
