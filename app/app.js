@@ -101,20 +101,40 @@ function loadYouTubeAPI() {
 }
 
 window.onYouTubeIframeAPIReady = function () {
+    // Calculate 16:9 height based on player section width
+    const playerSection = document.querySelector('.player-section');
+    const w = playerSection ? playerSection.offsetWidth : 800;
+    const h = Math.round(w * 9 / 16);
+
     state.player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
+        height: String(h),
+        width: String(w),
         playerVars: {
             autoplay: 0,
             modestbranding: 1,
             rel: 0,
         },
         events: {
-            onReady: () => { state.playerReady = true; },
+            onReady: () => {
+                state.playerReady = true;
+                // Ensure iframe matches container width
+                fixPlayerSize();
+            },
             onStateChange: onPlayerStateChange,
         },
     });
 };
+
+function fixPlayerSize() {
+    const iframe = document.querySelector('#player-wrapper iframe');
+    if (!iframe) return;
+    const w = iframe.parentElement.offsetWidth;
+    const h = Math.round(w * 9 / 16);
+    iframe.style.width = w + 'px';
+    iframe.style.height = h + 'px';
+}
+
+window.addEventListener('resize', fixPlayerSize);
 
 function onPlayerStateChange(event) {
     if (event.data === YT.PlayerState.PLAYING) {
@@ -750,6 +770,7 @@ function playItem(index) {
     playerPlaceholder.classList.add('hidden');
     playerWrapper.classList.remove('expanded');
     playerWrapper.classList.add('active');
+    fixPlayerSize();
     if (state.playerReady) {
 
         if (item.type === 'interview' && item.startAt) {
