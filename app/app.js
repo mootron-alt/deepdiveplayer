@@ -965,7 +965,7 @@ const shopSection = $('#shop-section');
 const shopLinks = $('#shop-links');
 let lastShopArtist = '';
 
-function updateShopLinks(artist) {
+async function updateShopLinks(artist) {
     if (!artist || artist === lastShopArtist) return;
     lastShopArtist = artist;
 
@@ -973,9 +973,63 @@ function updateShopLinks(artist) {
     const encoded = encodeURIComponent(artist);
 
     shopLinks.innerHTML = `
+        <span class="merch-loading">Loading merch...</span>
         <a class="shop-link" href="https://www.google.com/search?q=${encoded}+official+merch+store" target="_blank" rel="noopener">
             <span class="shop-link-icon">&#9733;</span>
             <span class="shop-link-label">Official Merch Store</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+    `;
+
+    // Fetch merch from Amazon
+    const cacheKey = `merch_${artist}`;
+    const cached = cacheGet(cacheKey);
+    if (cached && cached.length > 0) {
+        renderMerch(cached, artist);
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/merch?artist=${encoded}`);
+        const data = await res.json();
+        const items = data.items || [];
+        if (items.length > 0) cacheSet(cacheKey, items);
+        renderMerch(items, artist);
+    } catch {
+        renderMerch([], artist);
+    }
+}
+
+function renderMerch(items, artist) {
+    const encoded = encodeURIComponent(artist);
+    let merchHtml = '';
+
+    if (items.length > 0) {
+        merchHtml = '<div class="merch-grid">';
+        for (const item of items) {
+            merchHtml += `
+                <a class="merch-card" href="${item.url}" target="_blank" rel="noopener">
+                    <img class="merch-img" src="${item.image}" alt="" loading="lazy">
+                    <div class="merch-info">
+                        <span class="merch-title">${escapeHtml(item.title)}</span>
+                        ${item.price ? '<span class="merch-price">' + item.price + '</span>' : ''}
+                    </div>
+                </a>
+            `;
+        }
+        merchHtml += '</div>';
+    }
+
+    shopLinks.innerHTML = `
+        ${merchHtml}
+        <a class="shop-link" href="https://www.google.com/search?q=${encoded}+official+merch+store" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9733;</span>
+            <span class="shop-link-label">Official Merch Store</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+        <a class="shop-link" href="https://www.amazon.com/s?k=${encoded}+merchandise&i=fashion" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9733;</span>
+            <span class="shop-link-label">More Merch on Amazon</span>
             <span class="shop-link-arrow">&#8599;</span>
         </a>
     `;
