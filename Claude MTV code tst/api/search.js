@@ -1,8 +1,6 @@
 // Vercel Serverless Function — YouTube search proxy via scraping
-// No API key needed. Scrapes YouTube search results page.
 
-export default async function handler(req, res) {
-    // CORS headers
+module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
@@ -21,7 +19,7 @@ export default async function handler(req, res) {
         console.error('Scrape error:', err.message);
         return res.status(500).json({ error: 'Search failed', message: err.message });
     }
-}
+};
 
 async function scrapeYouTubeSearch(query, maxResults) {
     const encoded = encodeURIComponent(query);
@@ -35,7 +33,7 @@ async function scrapeYouTubeSearch(query, maxResults) {
     });
 
     if (!response.ok) {
-        throw new Error(`YouTube returned ${response.status}`);
+        throw new Error('YouTube returned ' + response.status);
     }
 
     const html = await response.text();
@@ -48,37 +46,39 @@ async function scrapeYouTubeSearch(query, maxResults) {
 
     const data = JSON.parse(dataMatch[1]);
 
-    // Navigate the deeply nested YouTube data structure
-    const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents
-        ?.sectionListRenderer?.contents;
+    const contents = data
+        && data.contents
+        && data.contents.twoColumnSearchResultsRenderer
+        && data.contents.twoColumnSearchResultsRenderer.primaryContents
+        && data.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer
+        && data.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents;
 
     if (!contents) return [];
 
     const videos = [];
 
-    for (const section of contents) {
-        const items = section?.itemSectionRenderer?.contents || [];
-        for (const item of items) {
-            const renderer = item?.videoRenderer;
+    for (var i = 0; i < contents.length; i++) {
+        var items = (contents[i].itemSectionRenderer && contents[i].itemSectionRenderer.contents) || [];
+        for (var j = 0; j < items.length; j++) {
+            var renderer = items[j].videoRenderer;
             if (!renderer) continue;
 
-            const videoId = renderer.videoId;
+            var videoId = renderer.videoId;
             if (!videoId) continue;
 
-            const title = renderer?.title?.runs?.[0]?.text || '';
-            const channel = renderer?.ownerText?.runs?.[0]?.text || '';
-            const thumbnail =
-                renderer?.thumbnail?.thumbnails?.slice(-1)?.[0]?.url ||
-                `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-            const description = renderer?.detailedMetadataSnippets?.[0]?.snippetText?.runs
-                ?.map(r => r.text).join('') || '';
+            var title = (renderer.title && renderer.title.runs && renderer.title.runs[0] && renderer.title.runs[0].text) || '';
+            var channel = (renderer.ownerText && renderer.ownerText.runs && renderer.ownerText.runs[0] && renderer.ownerText.runs[0].text) || '';
+            var thumbs = renderer.thumbnail && renderer.thumbnail.thumbnails;
+            var thumbnail = (thumbs && thumbs.length > 0 && thumbs[thumbs.length - 1].url) || ('https://i.ytimg.com/vi/' + videoId + '/mqdefault.jpg');
+            var snippetRuns = renderer.detailedMetadataSnippets && renderer.detailedMetadataSnippets[0] && renderer.detailedMetadataSnippets[0].snippetText && renderer.detailedMetadataSnippets[0].snippetText.runs;
+            var description = snippetRuns ? snippetRuns.map(function(r) { return r.text; }).join('') : '';
 
             videos.push({
                 id: videoId,
-                title,
-                thumbnail,
-                channel,
-                description,
+                title: title,
+                thumbnail: thumbnail,
+                channel: channel,
+                description: description,
             });
 
             if (videos.length >= maxResults) break;
