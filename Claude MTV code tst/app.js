@@ -172,8 +172,54 @@ function advancePlaylist() {
     }
 }
 
-// ── YouTube Data API Search ────────────────────────────────
+// ── API Cache (localStorage, 24h TTL) ──────────────────────
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_PREFIX = 'ddp_cache_';
+
+function cacheGet(key) {
+    try {
+        const raw = localStorage.getItem(CACHE_PREFIX + key);
+        if (!raw) return null;
+        const { data, ts } = JSON.parse(raw);
+        if (Date.now() - ts > CACHE_TTL) {
+            localStorage.removeItem(CACHE_PREFIX + key);
+            return null;
+        }
+        return data;
+    } catch { return null; }
+}
+
+function cacheSet(key, data) {
+    try {
+        localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ data, ts: Date.now() }));
+    } catch {
+        // localStorage full — clear old cache entries and retry
+        clearOldCache();
+        try {
+            localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ data, ts: Date.now() }));
+        } catch { /* give up */ }
+    }
+}
+
+function clearOldCache() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith(CACHE_PREFIX)) keys.push(k);
+    }
+    // Remove oldest half
+    keys.sort();
+    for (let i = 0; i < Math.ceil(keys.length / 2); i++) {
+        localStorage.removeItem(keys[i]);
+    }
+}
+
+// ── YouTube Data API Search (with cache) ───────────────────
 async function ytSearch(query, maxResults = 5) {
+    const cacheKey = `search_${query}_${maxResults}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
     const url = new URL('https://www.googleapis.com/youtube/v3/search');
     url.searchParams.set('part', 'snippet');
     url.searchParams.set('q', query);
@@ -188,13 +234,15 @@ async function ytSearch(query, maxResults = 5) {
         throw new Error(err.error?.message || `YouTube API error ${res.status}`);
     }
     const data = await res.json();
-    return (data.items || []).map((item) => ({
+    const results = (data.items || []).map((item) => ({
         id: item.id.videoId,
         title: decodeHTMLEntities(item.snippet.title),
         thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
         channel: item.snippet.channelTitle,
         description: item.snippet.description,
     }));
+    cacheSet(cacheKey, results);
+    return results;
 }
 
 function decodeHTMLEntities(text) {
@@ -899,6 +947,15 @@ const TRENDING_REFRESH_MS = 15 * 60 * 1000; // 15 minutes
 async function fetchTrendingArtists() {
     if (!state.apiKey) return;
 
+    // Check cache first (trending cached for 1 hour)
+    const trendingCacheKey = 'trending_music_us';
+    const cachedTrending = cacheGet(trendingCacheKey);
+    if (cachedTrending) {
+        state.trendingArtists = cachedTrending;
+        renderTrendingGrid();
+        return;
+    }
+
     try {
         const url = new URL('https://www.googleapis.com/youtube/v3/videos');
         url.searchParams.set('part', 'snippet');
@@ -945,6 +1002,7 @@ async function fetchTrendingArtists() {
         }
 
         state.trendingArtists = artists.slice(0, 12);
+        cacheSet(trendingCacheKey, state.trendingArtists);
         renderTrendingGrid();
     } catch (err) {
         // Silently fail — trending is a nice-to-have
