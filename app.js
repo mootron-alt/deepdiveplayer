@@ -980,7 +980,9 @@ function renderArticles(articles, artist) {
         card.href = article.url;
         card.target = '_blank';
         card.rel = 'noopener';
+        const imgHtml = article.image ? `<img class="article-card-img" src="${article.image}" alt="" loading="lazy">` : '';
         card.innerHTML = `
+            ${imgHtml}
             <div class="article-card-body">
                 <span class="article-card-title">${escapeHtml(article.title)}</span>
                 <span class="article-card-source">${article.source || 'Complex'} &#8599;</span>

@@ -31,74 +31,54 @@ async function searchComplex(artist) {
     var html = await response.text();
 
     var articles = [];
-
-    // Parse article links from search results
-    // Complex uses various patterns — try multiple approaches
-
-    // Pattern 1: Look for article card patterns with titles and URLs
-    var linkPattern = /<a[^>]*href="(\/music\/[^"]*|\/pop-culture\/[^"]*|\/pigeons-and-planes\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-    var match;
     var seen = {};
+    var artistFirst = artist.split(' ')[0].toLowerCase();
 
-    while ((match = linkPattern.exec(html)) !== null && articles.length < 6) {
+    // Find article cards — look for links to article pages with nearby images
+    // Complex article URLs follow patterns like /music/..., /pop-culture/...
+    var cardPattern = /<a[^>]*href="(\/(music|pop-culture|pigeons-and-planes|life|sneakers)\/[a-z0-9-]+\/[a-z0-9-]+)"[^>]*>/gi;
+    var match;
+
+    while ((match = cardPattern.exec(html)) !== null && articles.length < 6) {
         var href = match[1];
-        var inner = match[2];
-
-        // Skip if we've seen this URL
         if (seen[href]) continue;
         seen[href] = true;
 
-        // Extract text content (strip tags)
-        var title = inner.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-        if (!title || title.length < 15 || title.length > 200) continue;
+        // Get surrounding context (3000 chars around the link)
+        var start = Math.max(0, match.index - 1500);
+        var end = Math.min(html.length, match.index + 1500);
+        var context = html.substring(start, end);
 
-        // Check if it's related to the artist
-        if (!title.toLowerCase().includes(artist.toLowerCase().split(' ')[0].toLowerCase())) continue;
+        // Extract title from nearby text
+        var titleMatch = context.match(/(?:title|alt|aria-label)="([^"]{15,200})"/i);
+        var title = titleMatch ? titleMatch[1] : '';
 
-        articles.push({
-            title: title,
-            url: 'https://www.complex.com' + href,
-            source: 'Complex',
-        });
-    }
-
-    // Pattern 2: Try JSON-LD or structured data
-    if (articles.length === 0) {
-        var jsonLdPattern = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
-        var jsonMatch;
-        while ((jsonMatch = jsonLdPattern.exec(html)) !== null) {
-            try {
-                var jsonData = JSON.parse(jsonMatch[1]);
-                var items = Array.isArray(jsonData) ? jsonData : [jsonData];
-                for (var i = 0; i < items.length; i++) {
-                    if (items[i]['@type'] === 'Article' || items[i]['@type'] === 'NewsArticle') {
-                        articles.push({
-                            title: items[i].headline || items[i].name || '',
-                            url: items[i].url || '',
-                            source: 'Complex',
-                            image: items[i].image && items[i].image.url ? items[i].image.url : '',
-                        });
-                    }
-                }
-            } catch (e) { /* skip bad JSON */ }
-        }
-    }
-
-    // Pattern 3: Look for og:title and headline patterns
-    if (articles.length === 0) {
-        // Try to find article titles in meta tags or heading patterns
-        var headingPattern = /<h[23][^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]*?)<\/h[23]>/gi;
-        var hMatch;
-        while ((hMatch = headingPattern.exec(html)) !== null && articles.length < 6) {
-            var hTitle = hMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-            if (hTitle && hTitle.length > 15) {
-                articles.push({
-                    title: hTitle,
-                    url: 'https://www.complex.com/search?q=' + encoded,
-                    source: 'Complex',
-                });
+        // Also try heading tags
+        if (!title) {
+            var headingMatch = context.match(/<h[2-4][^>]*>([\s\S]{10,200}?)<\/h[2-4]>/i);
+            if (headingMatch) {
+                title = headingMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
             }
         }
+
+        if (!title || !title.toLowerCase().includes(artistFirst)) continue;
+
+        // Extract image from nearby img tags
+        var imgMatch = context.match(/<img[^>]*src="(https:\/\/[^"]*(?:images|media|cdn)[^"]*\.(jpg|jpeg|png|webp)[^"]*)"/i);
+        var image = imgMatch ? imgMatch[1] : '';
+
+        // Also try srcset or data-src
+        if (!image) {
+            var srcsetMatch = context.match(/(?:srcset|data-src)="(https:\/\/[^"]*\.(jpg|jpeg|png|webp)[^" ]*)"/i);
+            image = srcsetMatch ? srcsetMatch[1] : '';
+        }
+
+        articles.push({
+            title: title.length > 80 ? title.substring(0, 77) + '...' : title,
+            url: 'https://www.complex.com' + href,
+            image: image,
+            source: 'Complex',
+        });
     }
 
     return articles;
