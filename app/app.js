@@ -749,6 +749,7 @@ function playItem(index) {
     // Load video
     playerPlaceholder.classList.add('hidden');
     playerWrapper.classList.remove('expanded');
+    playerWrapper.classList.add('active');
     if (state.playerReady) {
 
         if (item.type === 'interview' && item.startAt) {

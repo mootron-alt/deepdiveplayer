@@ -249,6 +249,11 @@ main {
 .player-wrapper #player {
     width: 100%;
     aspect-ratio: 16 / 9;
+    display: none;
+}
+
+.player-wrapper.active #player {
+    display: block;
 }
 
 .player-wrapper #player iframe {
