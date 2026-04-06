@@ -13,6 +13,8 @@ const state = {
     usedVideoIds: new Set(),  // avoid duplicates across artists
     artistHistory: [],        // artists we've already played (avoid repeats)
     isAutoQueuing: false,     // are we in the middle of fetching the next artist?
+    trendingArtists: [],
+    trendingTimer: null,
 };
 
 // ── Config ─────────────────────────────────────────────────
@@ -30,11 +32,19 @@ const searchInput = $('#search-input');
 const searchBtn = $('#search-btn');
 const addBtn = $('#add-btn');
 const searchStatus = $('#search-status');
+const playerWrapper = $('#player-wrapper');
 const playerPlaceholder = $('#player-placeholder');
+const trendingContainer = $('#trending-container');
+const trendingGrid = $('#trending-grid');
+const placeholderFallback = $('#placeholder-fallback');
 const nowPlaying = $('#now-playing');
 const nowPlayingLabel = $('#now-playing-label');
 const nowPlayingTitle = $('#now-playing-title');
 const clipBadge = $('#clip-badge');
+const carouselSection = $('#carousel-section');
+const carouselEl = $('#carousel');
+const carouselLeft = $('#carousel-left');
+const carouselRight = $('#carousel-right');
 const controls = $('#controls');
 const prevBtn = $('#prev-btn');
 const playPauseBtn = $('#play-pause-btn');
@@ -59,6 +69,7 @@ saveKeyBtn.addEventListener('click', () => {
         state.apiKey = key;
         localStorage.setItem('yt-api-key', key);
         apiKeyBanner.classList.add('hidden');
+        startTrendingRefresh();
     }
 });
 
@@ -193,6 +204,12 @@ const INTERVIEW_QUERIES = [
     (a, s) => `"${a}" talks about "${s}"`,
 ];
 
+const SHORTS_QUERIES = [
+    (a, s) => `${a} ${s} dance #shorts`,
+    (a, s) => `${a} ${s} fan #shorts`,
+    (a, s) => `${a} ${s} #shorts trend`,
+];
+
 const FILTER_OUT = [
     /lyric/i, /karaoke/i, /cover/i, /remix/i, /reaction/i,
     /tutorial/i, /lesson/i, /how to play/i, /drum cover/i,
@@ -245,7 +262,31 @@ async function fetchSongPair(artist, songQuery) {
         bestInterview.artist = artist;
     }
 
-    return { musicVideo, interview: bestInterview };
+    // Search for a fan short / dance short
+    const shortsPromises = SHORTS_QUERIES.map((qFn) =>
+        ytSearch(qFn(artist, searchSong), 3).catch(() => [])
+    );
+    const shortsResults = await Promise.all(shortsPromises);
+
+    let bestShort = null;
+    for (const results of shortsResults) {
+        for (const vid of results) {
+            if (!state.usedVideoIds.has(vid.id)) {
+                state.usedVideoIds.add(vid.id);
+                bestShort = vid;
+                break;
+            }
+        }
+        if (bestShort) break;
+    }
+
+    if (bestShort) {
+        bestShort.type = 'short';
+        bestShort.typeLabel = 'Fan Short';
+        bestShort.artist = artist;
+    }
+
+    return { musicVideo, interview: bestInterview, short: bestShort };
 }
 
 // Try to extract song name from a video title like "Artist - Song (Official Video)"
@@ -369,6 +410,7 @@ async function maybeAutoQueueSimilar() {
         for (const pair of pairs) {
             state.playlist.push(pair.musicVideo);
             if (pair.interview) state.playlist.push(pair.interview);
+            if (pair.short) state.playlist.push(pair.short);
         }
 
         renderPlaylist();
@@ -444,6 +486,7 @@ async function deepDiveSearch(query) {
         for (const pair of pairs) {
             state.playlist.push(pair.musicVideo);
             if (pair.interview) state.playlist.push(pair.interview);
+            if (pair.short) state.playlist.push(pair.short);
         }
 
         renderPlaylist();
@@ -520,6 +563,60 @@ function parseQuery(query) {
 }
 
 // ── Playlist Rendering ─────────────────────────────────────
+function renderCarousel() {
+    carouselEl.innerHTML = '';
+
+    if (state.playlist.length === 0) {
+        carouselSection.classList.add('hidden');
+        return;
+    }
+
+    carouselSection.classList.remove('hidden');
+
+    state.playlist.forEach((item, i) => {
+        // Dividers
+        if (item.type === 'divider') {
+            const divEl = document.createElement('div');
+            divEl.className = 'carousel-divider';
+            divEl.innerHTML = `
+                <span class="carousel-divider-label">${item.typeLabel}</span>
+                <span class="carousel-divider-artist">${item.title}</span>
+            `;
+            carouselEl.appendChild(divEl);
+            return;
+        }
+
+        const el = document.createElement('div');
+        const isActive = i === state.currentIndex;
+        const itemClass = { interview: 'interview-item', short: 'short-item' }[item.type] || '';
+        el.className = `carousel-item${isActive ? ' active' : ''}${itemClass ? ' ' + itemClass : ''}`;
+
+        const typeClassMap = { music: 'type-music', interview: 'type-interview', short: 'type-short' };
+        const typeClass = typeClassMap[item.type] || 'type-music';
+        const typeTextMap = { music: 'Video', interview: `Interview · ${CLIP_DURATION}s`, short: '#Short' };
+        const typeText = typeTextMap[item.type] || item.typeLabel;
+
+        el.innerHTML = `
+            <img class="carousel-thumb" src="${item.thumbnail}" alt="" loading="lazy">
+            <div class="carousel-info">
+                <div class="carousel-item-title" title="${item.title}">${item.title}</div>
+                <div class="carousel-item-type ${typeClass}">${typeText}</div>
+            </div>
+        `;
+
+        el.addEventListener('click', () => playItem(i));
+        carouselEl.appendChild(el);
+    });
+
+    // Scroll active item into view
+    requestAnimationFrame(() => {
+        const activeEl = carouselEl.querySelector('.carousel-item.active');
+        if (activeEl) {
+            activeEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+    });
+}
+
 function renderPlaylist() {
     playlistEl.innerHTML = '';
     playlistSection.classList.remove('hidden');
@@ -542,17 +639,18 @@ function renderPlaylist() {
 
         const el = document.createElement('div');
         const isActive = i === state.currentIndex;
-        const isInterview = item.type === 'interview';
-        el.className = `playlist-item${isActive ? ' active' : ''}${isInterview ? ' interview-item' : ''}`;
+        const plItemClass = { interview: 'interview-item', short: 'short-item' }[item.type] || '';
+        el.className = `playlist-item${isActive ? ' active' : ''}${plItemClass ? ' ' + plItemClass : ''}`;
 
-        const clipTag = isInterview ? `<span class="clip-tag">${CLIP_DURATION}s</span>` : '';
+        const clipTag = item.type === 'interview' ? `<span class="clip-tag">${CLIP_DURATION}s</span>` :
+                         item.type === 'short' ? '<span class="clip-tag">#short</span>' : '';
 
         el.innerHTML = `
             <span class="playlist-item-index">${isActive ? '&#9654;' : ''}</span>
             <img class="playlist-item-thumb" src="${item.thumbnail}" alt="" loading="lazy">
             <div class="playlist-item-info">
                 <div class="playlist-item-title" title="${item.title}">${item.title}</div>
-                <div class="playlist-item-type ${item.type === 'music' ? 'type-music' : 'type-interview'}">${item.typeLabel} ${clipTag}</div>
+                <div class="playlist-item-type ${{ music: 'type-music', interview: 'type-interview', short: 'type-short' }[item.type] || ''}">${item.typeLabel} ${clipTag}</div>
             </div>
             <button class="playlist-item-remove" title="Remove">&times;</button>
         `;
@@ -568,6 +666,9 @@ function renderPlaylist() {
 
         playlistEl.appendChild(el);
     });
+
+    // Keep carousel in sync
+    renderCarousel();
 }
 
 function removeItem(index) {
@@ -588,6 +689,7 @@ function removeItem(index) {
             controls.classList.add('hidden');
             nowPlaying.classList.add('hidden');
             playlistSection.classList.add('hidden');
+            carouselSection.classList.add('hidden');
         }
     } else if (state.currentIndex > index) {
         state.currentIndex--;
@@ -614,6 +716,7 @@ function playItem(index) {
     // Load video
     if (state.playerReady) {
         playerPlaceholder.classList.add('hidden');
+            playerWrapper.classList.remove('expanded');
 
         if (item.type === 'interview' && item.startAt) {
             state.player.loadVideoById({
@@ -628,13 +731,18 @@ function playItem(index) {
     // Update now-playing bar
     nowPlaying.classList.remove('hidden');
     const artistTag = item.artist ? `${item.artist} · ` : '';
-    nowPlayingLabel.textContent = item.type === 'music' ? 'Music Video' : 'Interview';
-    nowPlayingLabel.className = `now-playing-label ${item.type === 'music' ? 'music-video' : 'interview'}`;
+    const labelMap = { music: 'Music Video', interview: 'Interview', short: 'Fan Short' };
+    const classMap = { music: 'music-video', interview: 'interview', short: 'fan-short' };
+    nowPlayingLabel.textContent = labelMap[item.type] || item.type;
+    nowPlayingLabel.className = `now-playing-label ${classMap[item.type] || ''}`;
     nowPlayingTitle.textContent = `${artistTag}${item.title}`;
 
     // Show/hide clip badge
     if (item.type === 'interview') {
         clipBadge.textContent = `${CLIP_DURATION}s clip`;
+        clipBadge.classList.remove('hidden');
+    } else if (item.type === 'short') {
+        clipBadge.textContent = '#short';
         clipBadge.classList.remove('hidden');
     } else {
         clipBadge.classList.add('hidden');
@@ -671,6 +779,15 @@ playPauseBtn.addEventListener('click', () => {
     }
 });
 
+// ── Carousel Scroll ────────────────────────────────────────
+carouselLeft.addEventListener('click', () => {
+    carouselEl.scrollBy({ left: -300, behavior: 'smooth' });
+});
+
+carouselRight.addEventListener('click', () => {
+    carouselEl.scrollBy({ left: 300, behavior: 'smooth' });
+});
+
 // ── Search Events ──────────────────────────────────────────
 searchBtn.addEventListener('click', () => {
     const q = searchInput.value.trim();
@@ -689,6 +806,108 @@ searchInput.addEventListener('keydown', (e) => {
     }
 });
 
+// ── Trending Artists ────────────────────────────────────────
+const TRENDING_REFRESH_MS = 15 * 60 * 1000; // 15 minutes
+
+async function fetchTrendingArtists() {
+    if (!state.apiKey) return;
+
+    try {
+        const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+        url.searchParams.set('part', 'snippet');
+        url.searchParams.set('chart', 'mostPopular');
+        url.searchParams.set('videoCategoryId', '10'); // Music
+        url.searchParams.set('regionCode', 'US');
+        url.searchParams.set('maxResults', '24');
+        url.searchParams.set('key', state.apiKey);
+
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Extract unique artists from channel names
+        const seen = new Set();
+        const artists = [];
+
+        for (const item of (data.items || [])) {
+            let name = item.snippet.channelTitle
+                .replace(/ - Topic$/i, '')
+                .replace(/VEVO$/i, '')
+                .replace(/Official$/i, '')
+                .trim();
+
+            const nameLower = name.toLowerCase();
+            if (!seen.has(nameLower) && name.length > 1) {
+                seen.add(nameLower);
+                artists.push({
+                    name,
+                    thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+                    videoTitle: decodeHTMLEntities(item.snippet.title),
+                });
+            }
+        }
+
+        state.trendingArtists = artists.slice(0, 12);
+        renderTrendingGrid();
+    } catch (err) {
+        // Silently fail — trending is a nice-to-have
+        console.warn('Trending fetch failed:', err);
+    }
+}
+
+function renderTrendingGrid() {
+    if (state.trendingArtists.length === 0) {
+        trendingContainer.classList.add('hidden');
+        placeholderFallback.classList.remove('hidden');
+        return;
+    }
+
+    placeholderFallback.classList.add('hidden');
+    trendingContainer.classList.remove('hidden');
+    playerWrapper.classList.add('expanded');
+
+    // Fade out
+    trendingGrid.classList.add('fade-out');
+    trendingGrid.classList.remove('fade-in');
+
+    setTimeout(() => {
+        trendingGrid.innerHTML = '';
+
+        for (const artist of state.trendingArtists) {
+            const card = document.createElement('div');
+            card.className = 'trending-card';
+            card.innerHTML = `
+                <img class="trending-thumb" src="${artist.thumbnail}" alt="${artist.name}" loading="lazy">
+                <div class="trending-name" title="${artist.name}">${artist.name}</div>
+            `;
+            card.addEventListener('click', () => {
+                searchInput.value = artist.name;
+                deepDiveSearch(artist.name);
+            });
+            trendingGrid.appendChild(card);
+        }
+
+        // Fade in
+        trendingGrid.classList.remove('fade-out');
+        trendingGrid.classList.add('fade-in');
+    }, 400);
+}
+
+function startTrendingRefresh() {
+    if (!state.apiKey) return;
+
+    fetchTrendingArtists();
+
+    if (state.trendingTimer) clearInterval(state.trendingTimer);
+    state.trendingTimer = setInterval(() => {
+        // Only refresh if we're still on the landing page (player placeholder visible)
+        if (!playerPlaceholder.classList.contains('hidden')) {
+            fetchTrendingArtists();
+        }
+    }, TRENDING_REFRESH_MS);
+}
+
 // ── Init ───────────────────────────────────────────────────
 initApiKey();
 loadYouTubeAPI();
+startTrendingRefresh();

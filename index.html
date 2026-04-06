@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deep Dive Player</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=4">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -41,8 +41,14 @@
         <div class="player-section">
             <div id="player-wrapper" class="player-wrapper">
                 <div id="player-placeholder" class="player-placeholder">
-                    <div class="placeholder-icon">&#9654;</div>
-                    <p>Search for a song to start your deep dive</p>
+                    <div id="trending-container" class="trending-container hidden">
+                        <p class="trending-heading">TRENDING NOW</p>
+                        <div id="trending-grid" class="trending-grid"></div>
+                    </div>
+                    <div id="placeholder-fallback" class="placeholder-fallback">
+                        <div class="placeholder-icon">&#9654;</div>
+                        <p>Search for a song to start your deep dive</p>
+                    </div>
                 </div>
                 <div id="player"></div>
             </div>
@@ -50,6 +56,16 @@
                 <span id="now-playing-label" class="now-playing-label"></span>
                 <span id="clip-badge" class="clip-badge hidden"></span>
                 <span id="now-playing-title" class="now-playing-title"></span>
+            </div>
+        </div>
+
+        <!-- Up Next Carousel -->
+        <div id="carousel-section" class="carousel-section hidden">
+            <span class="carousel-label">UP NEXT</span>
+            <div class="carousel-wrapper">
+                <button id="carousel-left" class="carousel-arrow carousel-arrow-left">&#9664;</button>
+                <div id="carousel" class="carousel"></div>
+                <button id="carousel-right" class="carousel-arrow carousel-arrow-right">&#9654;</button>
             </div>
         </div>
 
