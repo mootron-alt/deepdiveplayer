@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deep Dive Player</title>
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=13">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -58,6 +58,31 @@
                 <span id="clip-badge" class="clip-badge hidden"></span>
                 <span id="now-playing-title" class="now-playing-title"></span>
             </div>
+
+            <!-- Up Next Carousel -->
+            <div id="carousel-section" class="carousel-section hidden">
+                <span class="carousel-label">UP NEXT</span>
+                <div class="carousel-wrapper">
+                    <button id="carousel-left" class="carousel-arrow carousel-arrow-left">&#9664;</button>
+                    <div id="carousel" class="carousel"></div>
+                    <button id="carousel-right" class="carousel-arrow carousel-arrow-right">&#9654;</button>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div id="controls" class="controls hidden">
+                <button id="prev-btn" class="control-btn" title="Previous">&#9664;&#9664;</button>
+                <button id="play-pause-btn" class="control-btn" title="Play/Pause">&#9654;</button>
+                <button id="next-btn" class="control-btn" title="Next">&#9654;&#9654;</button>
+                <button id="skip-btn" class="control-btn skip-btn" title="Skip to next video">SKIP &#9654;&#9654;</button>
+            </div>
+
+            <!-- Articles -->
+            <div id="articles-section" class="articles-section hidden">
+                <span class="articles-label">IN THE NEWS</span>
+                <div id="articles-grid" class="articles-grid"></div>
+            </div>
+
         </div>
 
         <!-- Social Sidebar -->
@@ -102,30 +127,6 @@
         </div>
 
         </div><!-- /player-layout -->
-
-        <!-- Up Next Carousel -->
-        <div id="carousel-section" class="carousel-section hidden">
-            <span class="carousel-label">UP NEXT</span>
-            <div class="carousel-wrapper">
-                <button id="carousel-left" class="carousel-arrow carousel-arrow-left">&#9664;</button>
-                <div id="carousel" class="carousel"></div>
-                <button id="carousel-right" class="carousel-arrow carousel-arrow-right">&#9654;</button>
-            </div>
-        </div>
-
-        <!-- Articles -->
-        <div id="articles-section" class="articles-section hidden">
-            <span class="articles-label">IN THE NEWS</span>
-            <div id="articles-grid" class="articles-grid"></div>
-        </div>
-
-        <!-- Controls -->
-        <div id="controls" class="controls hidden">
-            <button id="prev-btn" class="control-btn" title="Previous">&#9664;&#9664;</button>
-            <button id="play-pause-btn" class="control-btn" title="Play/Pause">&#9654;</button>
-            <button id="next-btn" class="control-btn" title="Next">&#9654;&#9654;</button>
-            <button id="skip-btn" class="control-btn skip-btn" title="Skip to next video">SKIP &#9654;&#9654;</button>
-        </div>
 
         <!-- Discover -->
         <div id="discover-section" class="discover-section hidden">
