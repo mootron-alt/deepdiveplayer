@@ -747,9 +747,9 @@ function playItem(index) {
     const item = state.playlist[index];
 
     // Load video
+    playerPlaceholder.classList.add('hidden');
+    playerWrapper.classList.remove('expanded');
     if (state.playerReady) {
-        playerPlaceholder.classList.add('hidden');
-            playerWrapper.classList.remove('expanded');
 
         if (item.type === 'interview' && item.startAt) {
             state.player.loadVideoById({
@@ -1035,7 +1035,9 @@ function renderMerch(items, artist) {
     let merchHtml = '';
 
     if (items.length > 0) {
-        merchHtml = '<div class="merch-grid">';
+        merchHtml = '<div class="scroll-wrapper">';
+        merchHtml += '<button class="scroll-arrow scroll-left" onclick="this.nextElementSibling.scrollBy({left:-300,behavior:\'smooth\'})">&#9664;</button>';
+        merchHtml += '<div class="merch-grid">';
         for (const item of items) {
             merchHtml += `
                 <a class="merch-card" href="${item.url}" target="_blank" rel="noopener">
@@ -1047,6 +1049,8 @@ function renderMerch(items, artist) {
                 </a>
             `;
         }
+        merchHtml += '</div>';
+        merchHtml += '<button class="scroll-arrow scroll-right" onclick="this.previousElementSibling.scrollBy({left:300,behavior:\'smooth\'})">&#9654;</button>';
         merchHtml += '</div>';
     }
 
