@@ -20,7 +20,13 @@ const state = {
 // ── Config ─────────────────────────────────────────────────
 const CLIP_DURATION = 30;
 const CLIP_SKIP_INTRO = 15;
-const USE_SCRAPER = true; // Use serverless scraper instead of YouTube API
+const USE_SCRAPER = true; // Use Invidious proxy instead of YouTube API
+const INVIDIOUS_INSTANCES = [
+    'https://vid.puffyan.us',
+    'https://invidious.fdn.fr',
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+];
 const PAIRS_PER_ARTIST = 3;  // 3 songs + 3 interviews = 6 videos, then switch
 
 // ── DOM refs ───────────────────────────────────────────────
@@ -234,20 +240,27 @@ async function ytSearch(query, maxResults = 5) {
 }
 
 async function ytSearchScraper(query, maxResults) {
-    const url = `/api/search?q=${encodeURIComponent(query)}&max=${maxResults}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Search failed (${res.status})`);
+    // Try each Invidious instance until one works
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const url = `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&page=1`;
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const data = await res.json();
+            return data.slice(0, maxResults).map((item) => ({
+                id: item.videoId,
+                title: item.title || '',
+                thumbnail: item.videoThumbnails && item.videoThumbnails.length > 0
+                    ? item.videoThumbnails.find(t => t.quality === 'medium')?.url || item.videoThumbnails[0].url
+                    : `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`,
+                channel: item.author || '',
+                description: item.description || '',
+            }));
+        } catch {
+            continue; // Try next instance
+        }
     }
-    const data = await res.json();
-    return (data.items || []).map((item) => ({
-        id: item.id,
-        title: decodeHTMLEntities(item.title || ''),
-        thumbnail: item.thumbnail || '',
-        channel: item.channel || '',
-        description: item.description || '',
-    }));
+    throw new Error('All search instances unavailable. Try again later.');
 }
 
 async function ytSearchAPI(query, maxResults) {
@@ -992,20 +1005,48 @@ async function fetchTrendingArtists() {
 }
 
 async function fetchTrendingScraper(cacheKey) {
-    try {
-        const res = await fetch('/api/trending');
-        if (!res.ok) {
-            showTrendingFallback('error');
+    // Use Invidious trending endpoint
+    for (const instance of INVIDIOUS_INSTANCES) {
+        try {
+            const res = await fetch(`${instance}/api/v1/trending?type=music&region=US`);
+            if (!res.ok) continue;
+            const data = await res.json();
+
+            const seen = {};
+            const artists = [];
+
+            for (const item of data) {
+                let name = (item.author || '')
+                    .replace(/ - Topic$/i, '')
+                    .replace(/VEVO$/i, '')
+                    .replace(/Official$/i, '')
+                    .trim();
+
+                if (!name || seen[name.toLowerCase()]) continue;
+                seen[name.toLowerCase()] = true;
+
+                const thumbnail = item.videoThumbnails && item.videoThumbnails.length > 0
+                    ? item.videoThumbnails.find(t => t.quality === 'medium')?.url || item.videoThumbnails[0].url
+                    : `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
+
+                artists.push({
+                    name,
+                    thumbnail,
+                    videoTitle: item.title || '',
+                });
+
+                if (artists.length >= 12) break;
+            }
+
+            state.trendingArtists = artists;
+            cacheSet(cacheKey, state.trendingArtists);
+            renderTrendingGrid();
             return;
+        } catch {
+            continue;
         }
-        const data = await res.json();
-        state.trendingArtists = (data.artists || []).slice(0, 12);
-        cacheSet(cacheKey, state.trendingArtists);
-        renderTrendingGrid();
-    } catch (err) {
-        console.warn('Trending scrape failed:', err);
-        showTrendingFallback('error');
     }
+    showTrendingFallback('error');
 }
 
 async function fetchTrendingAPI(cacheKey) {
