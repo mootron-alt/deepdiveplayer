@@ -225,6 +225,7 @@ main {
     display: flex;
     gap: 20px;
     max-width: 1200px;
+    align-items: flex-start;
 }
 
 .player-section {
