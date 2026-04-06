@@ -1,4 +1,4 @@
-// Scrape Complex.com articles about an artist
+// Scrape news articles about an artist via Google News
 
 module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,16 +8,17 @@ module.exports = async function handler(req, res) {
     if (!artist) return res.status(400).json({ error: 'Missing artist' });
 
     try {
-        var articles = await searchComplex(artist);
+        var articles = await searchNews(artist);
         return res.status(200).json({ articles: articles });
     } catch (err) {
         return res.status(500).json({ error: err.message, articles: [] });
     }
 };
 
-async function searchComplex(artist) {
-    var encoded = encodeURIComponent(artist);
-    var url = 'https://www.complex.com/search?q=' + encoded;
+async function searchNews(artist) {
+    // Use Google search with news tab to find recent articles
+    var encoded = encodeURIComponent(artist + ' music news');
+    var url = 'https://www.google.com/search?q=' + encoded + '&tbm=nws&hl=en';
 
     var response = await fetch(url, {
         headers: {
@@ -27,58 +28,64 @@ async function searchComplex(artist) {
         },
     });
 
-    if (!response.ok) throw new Error('Complex returned ' + response.status);
+    if (!response.ok) throw new Error('Google returned ' + response.status);
     var html = await response.text();
 
     var articles = [];
-    var seen = {};
-    var artistFirst = artist.split(' ')[0].toLowerCase();
 
-    // Find article cards — look for links to article pages with nearby images
-    // Complex article URLs follow patterns like /music/..., /pop-culture/...
-    var cardPattern = /<a[^>]*href="(\/(music|pop-culture|pigeons-and-planes|life|sneakers)\/[a-z0-9-]+\/[a-z0-9-]+)"[^>]*>/gi;
+    // Google News results have links with article titles
+    // Pattern: find <a> tags that link to external sites with nearby text
+    var linkPattern = /<a[^>]*href="\/url\?q=(https?:\/\/[^&"]+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
     var match;
+    var seen = {};
 
-    while ((match = cardPattern.exec(html)) !== null && articles.length < 6) {
-        var href = match[1];
-        if (seen[href]) continue;
-        seen[href] = true;
+    while ((match = linkPattern.exec(html)) !== null && articles.length < 6) {
+        var rawUrl = decodeURIComponent(match[1]);
+        var inner = match[2];
 
-        // Get surrounding context (3000 chars around the link)
-        var start = Math.max(0, match.index - 1500);
-        var end = Math.min(html.length, match.index + 1500);
-        var context = html.substring(start, end);
+        // Skip Google's own URLs
+        if (rawUrl.includes('google.com') || rawUrl.includes('youtube.com')) continue;
+        if (seen[rawUrl]) continue;
+        seen[rawUrl] = true;
 
-        // Extract title from nearby text
-        var titleMatch = context.match(/(?:title|alt|aria-label)="([^"]{15,200})"/i);
-        var title = titleMatch ? titleMatch[1] : '';
+        var title = inner.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        if (!title || title.length < 15 || title.length > 200) continue;
 
-        // Also try heading tags
-        if (!title) {
-            var headingMatch = context.match(/<h[2-4][^>]*>([\s\S]{10,200}?)<\/h[2-4]>/i);
-            if (headingMatch) {
-                title = headingMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-            }
-        }
+        // Extract source name from URL
+        var sourceMatch = rawUrl.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+        var source = sourceMatch ? sourceMatch[1].replace(/\.com$|\.org$|\.net$/, '') : '';
 
-        if (!title || !title.toLowerCase().includes(artistFirst)) continue;
-
-        // Extract image from nearby img tags
-        var imgMatch = context.match(/<img[^>]*src="(https:\/\/[^"]*(?:images|media|cdn)[^"]*\.(jpg|jpeg|png|webp)[^"]*)"/i);
+        // Look for image nearby
+        var context = html.substring(Math.max(0, match.index - 1000), match.index + 1000);
+        var imgMatch = context.match(/src="(https:\/\/[^"]*(?:encrypted|lh3|gstatic)[^"]*\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
         var image = imgMatch ? imgMatch[1] : '';
-
-        // Also try srcset or data-src
-        if (!image) {
-            var srcsetMatch = context.match(/(?:srcset|data-src)="(https:\/\/[^"]*\.(jpg|jpeg|png|webp)[^" ]*)"/i);
-            image = srcsetMatch ? srcsetMatch[1] : '';
-        }
 
         articles.push({
             title: title.length > 80 ? title.substring(0, 77) + '...' : title,
-            url: 'https://www.complex.com' + href,
+            url: rawUrl,
             image: image,
-            source: 'Complex',
+            source: source.charAt(0).toUpperCase() + source.slice(1),
         });
+    }
+
+    // Fallback: try a simpler pattern if Google changed their format
+    if (articles.length === 0) {
+        var simplePattern = /<a[^>]*href="(https?:\/\/(?!google|youtube)[^"]+)"[^>]*>([^<]{20,150})<\/a>/gi;
+        var sMatch;
+        while ((sMatch = simplePattern.exec(html)) !== null && articles.length < 6) {
+            var sUrl = sMatch[1];
+            var sTitle = sMatch[2].trim();
+            if (seen[sUrl]) continue;
+            seen[sUrl] = true;
+
+            var sSource = sUrl.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+            articles.push({
+                title: sTitle,
+                url: sUrl,
+                image: '',
+                source: sSource ? sSource[1].replace(/\.com$/, '') : '',
+            });
+        }
     }
 
     return articles;
