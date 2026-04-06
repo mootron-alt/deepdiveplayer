@@ -45,6 +45,13 @@ const carouselSection = $('#carousel-section');
 const carouselEl = $('#carousel');
 const carouselLeft = $('#carousel-left');
 const carouselRight = $('#carousel-right');
+const socialSidebar = $('#social-sidebar');
+const socialArtistName = $('#social-artist-name');
+const socialIg = $('#social-ig');
+const socialTiktok = $('#social-tiktok');
+const socialX = $('#social-x');
+const socialSpotify = $('#social-spotify');
+const tiktokEmbedContainer = $('#tiktok-embed-container');
 const controls = $('#controls');
 const prevBtn = $('#prev-btn');
 const playPauseBtn = $('#play-pause-btn');
@@ -749,6 +756,12 @@ function playItem(index) {
     }
 
     controls.classList.remove('hidden');
+
+    // Update social sidebar
+    if (item.artist) {
+        updateSocialSidebar(item.artist);
+    }
+
     renderPlaylist();
 }
 
@@ -805,6 +818,80 @@ searchInput.addEventListener('keydown', (e) => {
         if (q && !state.isSearching) deepDiveSearch(q);
     }
 });
+
+// ── Social Sidebar ─────────────────────────────────────────
+let lastSocialArtist = '';
+
+function updateSocialSidebar(artist) {
+    if (!artist || artist === lastSocialArtist) return;
+    lastSocialArtist = artist;
+
+    socialSidebar.classList.remove('hidden');
+    socialArtistName.textContent = artist;
+
+    // Build search-based profile links (most reliable approach)
+    const encoded = encodeURIComponent(artist);
+    socialIg.href = `https://www.instagram.com/explore/tags/${encoded.replace(/%20/g, '')}/`;
+    socialTiktok.href = `https://www.tiktok.com/search?q=${encoded}`;
+    socialX.href = `https://x.com/search?q=${encoded}&f=top`;
+    socialSpotify.href = `https://open.spotify.com/search/${encoded}`;
+
+    // Try TikTok embed
+    loadTikTokEmbed(artist);
+}
+
+function loadTikTokEmbed(artist) {
+    const encoded = encodeURIComponent(artist);
+    const tiktokUrl = `https://www.tiktok.com/search?q=${encoded}`;
+
+    // Try iframe embed — TikTok may block this with X-Frame-Options
+    tiktokEmbedContainer.innerHTML = '';
+
+    const iframe = document.createElement('iframe');
+    iframe.src = tiktokUrl;
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+    iframe.setAttribute('loading', 'lazy');
+
+    // Set a timeout — if iframe doesn't load, show fallback
+    const fallbackTimer = setTimeout(() => {
+        showTikTokFallback(artist, tiktokUrl);
+    }, 5000);
+
+    iframe.addEventListener('load', () => {
+        clearTimeout(fallbackTimer);
+        // Even if load fires, the content may be blocked — we can't detect X-Frame-Options
+        // from JS, so we show the iframe and hope for the best
+    });
+
+    iframe.addEventListener('error', () => {
+        clearTimeout(fallbackTimer);
+        showTikTokFallback(artist, tiktokUrl);
+    });
+
+    tiktokEmbedContainer.appendChild(iframe);
+
+    // Also set a shorter check — if we can't access iframe content, show fallback
+    setTimeout(() => {
+        try {
+            // If blocked, accessing contentDocument throws
+            const doc = iframe.contentDocument;
+            if (!doc || !doc.body || doc.body.innerHTML === '') {
+                showTikTokFallback(artist, tiktokUrl);
+            }
+        } catch (e) {
+            showTikTokFallback(artist, tiktokUrl);
+        }
+    }, 3000);
+}
+
+function showTikTokFallback(artist, url) {
+    tiktokEmbedContainer.innerHTML = `
+        <div class="tiktok-blocked">
+            <p>TikTok doesn't allow embedding</p>
+            <a href="${url}" target="_blank" rel="noopener">Open ${artist} on TikTok &#8599;</a>
+        </div>
+    `;
+}
 
 // ── Trending Artists ────────────────────────────────────────
 const TRENDING_REFRESH_MS = 15 * 60 * 1000; // 15 minutes

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deep Dive Player</title>
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -37,7 +37,8 @@
 
     <!-- Main Content -->
     <main>
-        <!-- Player -->
+        <!-- Player + Social Layout -->
+        <div class="player-layout">
         <div class="player-section">
             <div id="player-wrapper" class="player-wrapper">
                 <div id="player-placeholder" class="player-placeholder">
@@ -58,6 +59,40 @@
                 <span id="now-playing-title" class="now-playing-title"></span>
             </div>
         </div>
+
+        <!-- Social Sidebar -->
+        <div id="social-sidebar" class="social-sidebar hidden">
+            <div class="social-header">
+                <span class="social-artist-name" id="social-artist-name"></span>
+                <span class="social-label">SOCIAL</span>
+            </div>
+
+            <!-- Social Links -->
+            <div class="social-links" id="social-links">
+                <a id="social-ig" class="social-link social-ig" href="#" target="_blank" rel="noopener">
+                    <span class="social-icon">&#9679;</span> Instagram
+                </a>
+                <a id="social-tiktok" class="social-link social-tiktok" href="#" target="_blank" rel="noopener">
+                    <span class="social-icon">&#9679;</span> TikTok
+                </a>
+                <a id="social-x" class="social-link social-x" href="#" target="_blank" rel="noopener">
+                    <span class="social-icon">&#9679;</span> X / Twitter
+                </a>
+                <a id="social-spotify" class="social-link social-spotify" href="#" target="_blank" rel="noopener">
+                    <span class="social-icon">&#9679;</span> Spotify
+                </a>
+            </div>
+
+            <!-- TikTok Embed Attempt -->
+            <div class="social-tiktok-feed">
+                <span class="social-feed-label">TIKTOK</span>
+                <div id="tiktok-embed-container" class="tiktok-embed-container">
+                    <p class="tiktok-placeholder">Loading TikTok...</p>
+                </div>
+            </div>
+        </div>
+
+        </div><!-- /player-layout -->
 
         <!-- Up Next Carousel -->
         <div id="carousel-section" class="carousel-section hidden">
