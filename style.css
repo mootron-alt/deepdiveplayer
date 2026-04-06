@@ -1286,6 +1286,78 @@ main {
     letter-spacing: -0.5px;
 }
 
+/* Discover */
+.discover-section {
+    margin-top: 24px;
+    max-width: 900px;
+}
+
+.discover-section.hidden {
+    display: none;
+}
+
+.discover-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 12px;
+}
+
+.discover-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    padding: 4px 0;
+}
+
+.discover-grid::-webkit-scrollbar {
+    display: none;
+}
+
+.discover-card {
+    flex-shrink: 0;
+    width: 150px;
+    background: var(--bg-card);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    overflow: hidden;
+}
+
+.discover-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(230, 0, 18, 0.15);
+}
+
+.discover-card-img {
+    width: 100%;
+    height: 85px;
+    object-fit: cover;
+}
+
+.discover-card-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center;
+    padding: 8px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.discover-loading {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 12px 0;
+}
+
 /* Footer */
 footer {
     padding: 40px 32px 24px;

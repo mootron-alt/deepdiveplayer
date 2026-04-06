@@ -59,9 +59,8 @@ const prevBtn = $('#prev-btn');
 const playPauseBtn = $('#play-pause-btn');
 const nextBtn = $('#next-btn');
 const skipBtn = $('#skip-btn');
-const playlistSection = $('#playlist-section');
-const playlistCount = $('#playlist-count');
-const playlistEl = $('#playlist');
+const discoverSection = $('#discover-section');
+const discoverGrid = $('#discover-grid');
 
 // ── API Key Management ─────────────────────────────────────
 function initApiKey() {
@@ -703,56 +702,7 @@ function renderCarousel() {
 }
 
 function renderPlaylist() {
-    playlistEl.innerHTML = '';
-    playlistSection.classList.remove('hidden');
-
-    const videoCount = state.playlist.filter((i) => i.type !== 'divider').length;
-    playlistCount.textContent = `${videoCount} videos`;
-
-    state.playlist.forEach((item, i) => {
-        // Render artist divider
-        if (item.type === 'divider') {
-            const divEl = document.createElement('div');
-            divEl.className = 'playlist-divider';
-            divEl.innerHTML = `
-                <span class="divider-label">${item.typeLabel}</span>
-                <span class="divider-artist">${item.title}</span>
-            `;
-            playlistEl.appendChild(divEl);
-            return;
-        }
-
-        const el = document.createElement('div');
-        const isActive = i === state.currentIndex;
-        const plItemClass = { interview: 'interview-item', short: 'short-item' }[item.type] || '';
-        el.className = `playlist-item${isActive ? ' active' : ''}${plItemClass ? ' ' + plItemClass : ''}`;
-
-        const clipTag = item.type === 'interview' ? `<span class="clip-tag">${CLIP_DURATION}s</span>` :
-                         item.type === 'short' ? '<span class="clip-tag">#short</span>' : '';
-
-        el.innerHTML = `
-            <span class="playlist-item-index">${isActive ? '&#9654;' : ''}</span>
-            <img class="playlist-item-thumb" src="${item.thumbnail}" alt="" loading="lazy">
-            <div class="playlist-item-info">
-                <div class="playlist-item-title" title="${item.title}">${item.title}</div>
-                <div class="playlist-item-type ${{ music: 'type-music', interview: 'type-interview', short: 'type-short' }[item.type] || ''}">${item.typeLabel} ${clipTag}</div>
-            </div>
-            <button class="playlist-item-remove" title="Remove">&times;</button>
-        `;
-
-        el.addEventListener('click', (e) => {
-            if (e.target.closest('.playlist-item-remove')) return;
-            playItem(i);
-        });
-
-        el.querySelector('.playlist-item-remove').addEventListener('click', () => {
-            removeItem(i);
-        });
-
-        playlistEl.appendChild(el);
-    });
-
-    // Keep carousel in sync
+    // Just update the carousel — playlist list view removed
     renderCarousel();
 }
 
@@ -762,7 +712,6 @@ function removeItem(index) {
         clearClipTimer();
         if (state.playlist.length > 0) {
             state.currentIndex = Math.min(index, state.playlist.length - 1);
-            // Skip dividers
             while (state.currentIndex < state.playlist.length && state.playlist[state.currentIndex].type === 'divider') {
                 state.currentIndex++;
             }
@@ -773,7 +722,6 @@ function removeItem(index) {
             state.currentIndex = -1;
             controls.classList.add('hidden');
             nowPlaying.classList.add('hidden');
-            playlistSection.classList.add('hidden');
             carouselSection.classList.add('hidden');
         }
     } else if (state.currentIndex > index) {
@@ -841,6 +789,7 @@ function playItem(index) {
         updateShopLinks(item.artist);
         updateTwitterFeed(item.artist);
         loadArticles(item.artist);
+        loadDiscover(item.artist);
     }
 
     renderPlaylist();
@@ -899,6 +848,87 @@ searchInput.addEventListener('keydown', (e) => {
         if (q && !state.isSearching) deepDiveSearch(q);
     }
 });
+
+// ── Discover (Similar Artists) ─────────────────────────────
+let lastDiscoverArtist = '';
+
+async function loadDiscover(artist) {
+    if (!artist || artist === lastDiscoverArtist) return;
+    lastDiscoverArtist = artist;
+
+    discoverSection.classList.remove('hidden');
+    discoverGrid.innerHTML = '<span class="discover-loading">Finding similar artists...</span>';
+
+    const cacheKey = `discover_${artist}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+        renderDiscover(cached);
+        return;
+    }
+
+    try {
+        // Search YouTube for "artists similar to X" and "if you like X"
+        const queries = [
+            `artists similar to ${artist} official music video`,
+            `if you like ${artist} music video`,
+        ];
+
+        const seen = {};
+        seen[artist.toLowerCase()] = true;
+        const similarArtists = [];
+
+        for (const q of queries) {
+            if (similarArtists.length >= 8) break;
+            const results = await ytSearch(q, 10);
+            for (const vid of results) {
+                const channel = vid.channel
+                    .replace(/ - Topic$/i, '')
+                    .replace(/VEVO$/i, '')
+                    .replace(/ Official$/i, '')
+                    .trim();
+
+                if (!channel || channel.length < 2 || seen[channel.toLowerCase()]) continue;
+                seen[channel.toLowerCase()] = true;
+
+                similarArtists.push({
+                    name: channel,
+                    thumbnail: vid.thumbnail,
+                });
+
+                if (similarArtists.length >= 8) break;
+            }
+        }
+
+        if (similarArtists.length > 0) cacheSet(cacheKey, similarArtists);
+        renderDiscover(similarArtists);
+    } catch {
+        discoverGrid.innerHTML = '';
+        discoverSection.classList.add('hidden');
+    }
+}
+
+function renderDiscover(artists) {
+    discoverGrid.innerHTML = '';
+
+    if (artists.length === 0) {
+        discoverSection.classList.add('hidden');
+        return;
+    }
+
+    for (const a of artists) {
+        const card = document.createElement('div');
+        card.className = 'discover-card';
+        card.innerHTML = `
+            <img class="discover-card-img" src="${a.thumbnail}" alt="${escapeHtml(a.name)}" loading="lazy">
+            <div class="discover-card-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
+        `;
+        card.addEventListener('click', () => {
+            searchInput.value = a.name;
+            deepDiveSearch(a.name);
+        });
+        discoverGrid.appendChild(card);
+    }
+}
 
 // ── Articles (Complex.com) ─────────────────────────────────
 let lastArticleArtist = '';
