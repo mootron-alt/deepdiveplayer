@@ -987,11 +987,6 @@ function updateShopLinks(artist) {
             <span class="shop-link-label">Official Merch Store</span>
             <span class="shop-link-arrow">&#8599;</span>
         </a>
-        <a class="shop-link" href="https://www.bandcamp.com/search?q=${encoded}" target="_blank" rel="noopener">
-            <span class="shop-link-icon">&#9835;</span>
-            <span class="shop-link-label">Bandcamp</span>
-            <span class="shop-link-arrow">&#8599;</span>
-        </a>
     `;
 }
 
