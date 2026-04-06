@@ -838,6 +838,7 @@ function playItem(index) {
     // Update social sidebar
     if (item.artist) {
         updateSocialSidebar(item.artist, item.id);
+        updateShopLinks(item.artist);
         loadArticles(item.artist);
     }
 
@@ -956,6 +957,42 @@ function renderArticles(articles, artist) {
         `;
         articlesGrid.appendChild(card);
     }
+}
+
+// ── Shop Links ─────────────────────────────────────────────
+const shopSection = $('#shop-section');
+const shopLinks = $('#shop-links');
+let lastShopArtist = '';
+
+function updateShopLinks(artist) {
+    if (!artist || artist === lastShopArtist) return;
+    lastShopArtist = artist;
+
+    shopSection.classList.remove('hidden');
+    const encoded = encodeURIComponent(artist);
+
+    shopLinks.innerHTML = `
+        <a class="shop-link" href="https://music.apple.com/us/search?term=${encoded}" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9835;</span>
+            <span class="shop-link-label">Buy Music on Apple Music</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+        <a class="shop-link" href="https://www.amazon.com/s?k=${encoded}+music&i=digital-music" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9835;</span>
+            <span class="shop-link-label">Buy Music on Amazon</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+        <a class="shop-link" href="https://www.google.com/search?q=${encoded}+official+merch+store" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9733;</span>
+            <span class="shop-link-label">Official Merch Store</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+        <a class="shop-link" href="https://www.bandcamp.com/search?q=${encoded}" target="_blank" rel="noopener">
+            <span class="shop-link-icon">&#9835;</span>
+            <span class="shop-link-label">Bandcamp</span>
+            <span class="shop-link-arrow">&#8599;</span>
+        </a>
+    `;
 }
 
 // ── Social Sidebar ─────────────────────────────────────────
