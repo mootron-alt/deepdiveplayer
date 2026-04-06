@@ -96,18 +96,20 @@ function findTokens(obj, results, path) {
 
 async function fetchWithToken(token, apiKey) {
     try {
-        var url = 'https://www.youtube.com/youtubei/v1/next?key=' + apiKey;
+        var url = 'https://www.youtube.com/youtubei/v1/next?key=' + apiKey + '&prettyPrint=false';
         var resp = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Origin': 'https://www.youtube.com',
+                'Referer': 'https://www.youtube.com/',
             },
             body: JSON.stringify({
                 context: {
                     client: {
                         clientName: 'WEB',
-                        clientVersion: '2.20240101.00.00',
+                        clientVersion: '2.20260401.00.00',
                         hl: 'en',
                         gl: 'US',
                     },
@@ -116,7 +118,7 @@ async function fetchWithToken(token, apiKey) {
             }),
         });
 
-        if (!resp.ok) return [];
+        if (!resp.ok) return [{ _debug: 'API returned ' + resp.status }];
         var data = await resp.json();
 
         var comments = [];
