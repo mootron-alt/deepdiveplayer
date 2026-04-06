@@ -52,7 +52,7 @@ const socialIg = $('#social-ig');
 const socialTiktok = $('#social-tiktok');
 const socialX = $('#social-x');
 const socialSpotify = $('#social-spotify');
-const tiktokEmbedContainer = $('#tiktok-embed-container');
+const commentsContainer = $('#comments-container');
 const controls = $('#controls');
 const prevBtn = $('#prev-btn');
 const playPauseBtn = $('#play-pause-btn');
@@ -836,7 +836,7 @@ function playItem(index) {
 
     // Update social sidebar
     if (item.artist) {
-        updateSocialSidebar(item.artist);
+        updateSocialSidebar(item.artist, item.id);
     }
 
     renderPlaylist();
@@ -898,76 +898,87 @@ searchInput.addEventListener('keydown', (e) => {
 
 // ── Social Sidebar ─────────────────────────────────────────
 let lastSocialArtist = '';
+let lastCommentVideoId = '';
 
-function updateSocialSidebar(artist) {
-    if (!artist || artist === lastSocialArtist) return;
-    lastSocialArtist = artist;
-
+function updateSocialSidebar(artist, videoId) {
     socialSidebar.classList.remove('hidden');
-    socialArtistName.textContent = artist;
 
-    // Build search-based profile links (most reliable approach)
-    const encoded = encodeURIComponent(artist);
-    socialIg.href = `https://www.instagram.com/explore/tags/${encoded.replace(/%20/g, '')}/`;
-    socialTiktok.href = `https://www.tiktok.com/search?q=${encoded}`;
-    socialX.href = `https://x.com/search?q=${encoded}&f=top`;
-    socialSpotify.href = `https://open.spotify.com/search/${encoded}`;
+    if (artist && artist !== lastSocialArtist) {
+        lastSocialArtist = artist;
+        socialArtistName.textContent = artist;
 
-    // Try TikTok embed
-    loadTikTokEmbed(artist);
+        const encoded = encodeURIComponent(artist);
+        socialIg.href = `https://www.instagram.com/explore/tags/${encoded.replace(/%20/g, '')}/`;
+        socialTiktok.href = `https://www.tiktok.com/search?q=${encoded}`;
+        socialX.href = `https://x.com/search?q=${encoded}&f=top`;
+        socialSpotify.href = `https://open.spotify.com/search/${encoded}`;
+    }
+
+    // Load comments for the current video
+    if (videoId && videoId !== lastCommentVideoId) {
+        lastCommentVideoId = videoId;
+        loadComments(videoId);
+    }
 }
 
-function loadTikTokEmbed(artist) {
-    const encoded = encodeURIComponent(artist);
-    const tiktokUrl = `https://www.tiktok.com/search?q=${encoded}`;
+async function loadComments(videoId) {
+    commentsContainer.innerHTML = '<p class="comments-loading">Loading comments...</p>';
 
-    // Try iframe embed — TikTok may block this with X-Frame-Options
-    tiktokEmbedContainer.innerHTML = '';
+    // Check cache
+    const cacheKey = `comments_${videoId}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+        renderComments(cached, videoId);
+        return;
+    }
 
-    const iframe = document.createElement('iframe');
-    iframe.src = tiktokUrl;
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
-    iframe.setAttribute('loading', 'lazy');
+    try {
+        const res = await fetch(`/api/comments?v=${videoId}`);
+        const data = await res.json();
+        const comments = data.comments || [];
 
-    // Set a timeout — if iframe doesn't load, show fallback
-    const fallbackTimer = setTimeout(() => {
-        showTikTokFallback(artist, tiktokUrl);
-    }, 5000);
-
-    iframe.addEventListener('load', () => {
-        clearTimeout(fallbackTimer);
-        // Even if load fires, the content may be blocked — we can't detect X-Frame-Options
-        // from JS, so we show the iframe and hope for the best
-    });
-
-    iframe.addEventListener('error', () => {
-        clearTimeout(fallbackTimer);
-        showTikTokFallback(artist, tiktokUrl);
-    });
-
-    tiktokEmbedContainer.appendChild(iframe);
-
-    // Also set a shorter check — if we can't access iframe content, show fallback
-    setTimeout(() => {
-        try {
-            // If blocked, accessing contentDocument throws
-            const doc = iframe.contentDocument;
-            if (!doc || !doc.body || doc.body.innerHTML === '') {
-                showTikTokFallback(artist, tiktokUrl);
-            }
-        } catch (e) {
-            showTikTokFallback(artist, tiktokUrl);
+        if (comments.length > 0) {
+            cacheSet(cacheKey, comments);
         }
-    }, 3000);
+        renderComments(comments, videoId);
+    } catch (err) {
+        renderComments([], videoId);
+    }
 }
 
-function showTikTokFallback(artist, url) {
-    tiktokEmbedContainer.innerHTML = `
-        <div class="tiktok-blocked">
-            <p>TikTok doesn't allow embedding</p>
-            <a href="${url}" target="_blank" rel="noopener">Open ${artist} on TikTok &#8599;</a>
-        </div>
-    `;
+function renderComments(comments, videoId) {
+    commentsContainer.innerHTML = '';
+
+    if (comments.length === 0) {
+        commentsContainer.innerHTML = `
+            <div class="comments-fallback">
+                <p>Comments not available for this video</p>
+                <a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" rel="noopener">View on YouTube &#8599;</a>
+            </div>
+        `;
+        return;
+    }
+
+    for (const c of comments) {
+        const card = document.createElement('div');
+        card.className = 'comment-card';
+
+        const likesHtml = c.likes ? `<span class="comment-likes">${c.likes} likes</span>` : '';
+        const timeHtml = c.time ? `<span>${c.time}</span>` : '';
+
+        card.innerHTML = `
+            <span class="comment-author">${escapeHtml(c.author)}</span>
+            <span class="comment-text">${escapeHtml(c.text)}</span>
+            <div class="comment-meta">${likesHtml}${timeHtml}</div>
+        `;
+        commentsContainer.appendChild(card);
+    }
+}
+
+function escapeHtml(str) {
+    const el = document.createElement('span');
+    el.textContent = str;
+    return el.innerHTML;
 }
 
 // ── Trending Artists ────────────────────────────────────────
