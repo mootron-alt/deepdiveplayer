@@ -831,6 +831,42 @@ main {
     margin-top: 2px;
 }
 
+/* Twitter Feed */
+.twitter-feed-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.twitter-feed-section.hidden {
+    display: none;
+}
+
+.twitter-feed {
+    border-radius: 6px;
+    overflow: hidden;
+    max-height: 400px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+
+.twitter-feed iframe {
+    border: none !important;
+}
+
+.twitter-feed-fallback {
+    padding: 12px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.twitter-feed-fallback a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--accent);
+}
+
 /* Shop Links */
 .shop-section {
     display: flex;

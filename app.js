@@ -839,6 +839,7 @@ function playItem(index) {
     if (item.artist) {
         updateSocialSidebar(item.artist, item.id);
         updateShopLinks(item.artist);
+        updateTwitterFeed(item.artist);
         loadArticles(item.artist);
     }
 
@@ -978,6 +979,115 @@ function updateShopLinks(artist) {
             <span class="shop-link-arrow">&#8599;</span>
         </a>
     `;
+}
+
+// ── Twitter/X Feed ─────────────────────────────────────────
+const twitterFeedSection = $('#twitter-feed-section');
+const twitterFeed = $('#twitter-feed');
+let lastTwitterArtist = '';
+
+const TWITTER_HANDLES = {
+    'drake': 'Drake',
+    'taylor swift': 'taylorswift13',
+    'kendrick lamar': 'kendricklamar',
+    'beyonce': 'Beyonce',
+    'beyoncé': 'Beyonce',
+    'the weeknd': 'theweeknd',
+    'doja cat': 'DojaCat',
+    'post malone': 'PostMalone',
+    'sza': 'saborofficial',
+    'bad bunny': 'sanaborofficial',
+    'dua lipa': 'DUALIPA',
+    'travis scott': 'traborofficial',
+    'billie eilish': 'billieeilish',
+    'olivia rodrigo': 'oliviarodrigo',
+    'sabrina carpenter': 'SabrinaAnnLynn',
+    'morgan wallen': 'MorganWallen',
+    'kanye west': 'kaborofficial',
+    'rihanna': 'rihanna',
+    'ed sheeran': 'edsheeran',
+    'ariana grande': 'ArianaGrande',
+    'justin bieber': 'justinbieber',
+    'harry styles': 'Harry_Styles',
+    'adele': 'Adele',
+    'bruno mars': 'BrunoMars',
+    'cardi b': 'iamcaborb',
+    'megan thee stallion': 'theestallion',
+    'lil nas x': 'LilNasX',
+    'lizzo': 'lizzo',
+    'jack harlow': 'jackharlow',
+    'tyler the creator': 'tylerthecreator',
+    'j cole': 'JColeNC',
+    'chris brown': 'chrisbrown',
+    'nicki minaj': 'NICKIMINAJ',
+    'lil wayne': 'LilTunechi',
+    'future': '1future',
+    'metro boomin': 'MetroBoomin',
+    '21 savage': '21savage',
+    'lil baby': 'lilbaby4PF',
+    'gunna': 'Gunna',
+    'rod wave': 'rodwave',
+    'ice spice': 'icespicee_',
+    'central cee': 'centralcee',
+    'nirvana': 'Nirvana',
+    'eminem': 'Eminem',
+    'imagine dragons': 'Imaginaboragons',
+    'coldplay': 'coldplay',
+    'maroon 5': 'maroon5',
+    'bts': 'BTS_twt',
+    'blackpink': 'BLACKPINK',
+    'rosé': 'ABOROSE_0211',
+    'jimin': 'JIMIN_twt',
+    'jungkook': 'BTS_twt',
+};
+
+function updateTwitterFeed(artist) {
+    if (!artist || artist === lastTwitterArtist) return;
+    lastTwitterArtist = artist;
+
+    twitterFeedSection.classList.remove('hidden');
+
+    var handle = TWITTER_HANDLES[artist.toLowerCase()];
+
+    if (handle) {
+        // Use Twitter's timeline embed widget
+        twitterFeed.innerHTML = `
+            <a class="twitter-timeline"
+               data-height="350"
+               data-theme="dark"
+               data-chrome="noheader nofooter noborders transparent"
+               href="https://twitter.com/${handle}">
+            </a>
+        `;
+
+        // Load Twitter widget script
+        if (!window.twttr) {
+            var script = document.createElement('script');
+            script.src = 'https://platform.twitter.com/widgets.js';
+            script.async = true;
+            document.head.appendChild(script);
+        } else {
+            window.twttr.widgets.load(twitterFeed);
+        }
+
+        // Fallback if widget doesn't load
+        setTimeout(function() {
+            if (twitterFeed.querySelector('iframe')) return; // loaded fine
+            twitterFeed.innerHTML = `
+                <div class="twitter-feed-fallback">
+                    <a href="https://twitter.com/${handle}" target="_blank" rel="noopener">View @${handle} on X &#8599;</a>
+                </div>
+            `;
+        }, 5000);
+    } else {
+        // No known handle — link to search
+        var encoded = encodeURIComponent(artist);
+        twitterFeed.innerHTML = `
+            <div class="twitter-feed-fallback">
+                <a href="https://x.com/search?q=${encoded}&f=top" target="_blank" rel="noopener">Search "${artist}" on X &#8599;</a>
+            </div>
+        `;
+    }
 }
 
 // ── Social Sidebar ─────────────────────────────────────────
