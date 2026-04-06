@@ -5,18 +5,18 @@ module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
 
     var videoId = req.query.v;
+    var debug = req.query.debug === '1';
     if (!videoId) return res.status(400).json({ error: 'Missing video ID' });
 
     try {
-        var comments = await scrapeComments(videoId);
-        return res.status(200).json({ comments: comments });
+        var result = await scrapeComments(videoId, debug);
+        return res.status(200).json(result);
     } catch (err) {
         return res.status(500).json({ error: err.message, comments: [] });
     }
 };
 
-async function scrapeComments(videoId) {
-    // Step 1: Load the video page to get the continuation token for comments
+async function scrapeComments(videoId, debug) {
     var pageUrl = 'https://www.youtube.com/watch?v=' + videoId;
     var pageRes = await fetch(pageUrl, {
         headers: {
@@ -28,112 +28,133 @@ async function scrapeComments(videoId) {
     if (!pageRes.ok) throw new Error('YouTube returned ' + pageRes.status);
     var html = await pageRes.text();
 
-    // Extract the continuation token for comments
-    // YouTube puts it in ytInitialData as a continuation item
-    var tokenMatch = html.match(/"continuationCommand":\{"token":"([^"]+)"[^}]*"request":"CONTINUATION_REQUEST_TYPE_WATCH_NEXT"/);
-    if (!tokenMatch) {
-        // Try alternate pattern
-        tokenMatch = html.match(/"token":"([^"]+)"[^}]*?"targetId":"comments-section"/);
-    }
-    if (!tokenMatch) {
-        // Try broader pattern — look for comment continuation tokens
-        tokenMatch = html.match(/"token":"(Eg[A-Za-z0-9_-]+)"[^}]*?"label":"[^"]*[Cc]omment/);
-    }
-    if (!tokenMatch) {
-        // Last resort: find any continuation near "comment"
-        var commentIdx = html.indexOf('comment-item-section');
-        if (commentIdx === -1) commentIdx = html.indexOf('comments-section');
-        if (commentIdx > -1) {
-            var nearby = html.substring(Math.max(0, commentIdx - 2000), commentIdx + 2000);
-            var nearToken = nearby.match(/"continuation":"([^"]+)"/);
-            if (!nearToken) nearToken = nearby.match(/"token":"([^"]+)"/);
-            if (nearToken) tokenMatch = nearToken;
-        }
-    }
+    var dataMatch = html.match(/var ytInitialData = ({.*?});<\/script>/s);
+    if (!dataMatch) throw new Error('Could not parse page');
 
-    if (!tokenMatch) return [];
+    var data = JSON.parse(dataMatch[1]);
 
-    var continuationToken = tokenMatch[1];
+    // Find ALL continuation tokens and try to identify the comments one
+    var allTokens = [];
+    findTokens(data, allTokens, '');
 
-    // Also extract API key from page
+    // Filter for tokens that look like comment continuations (start with "Eg")
+    var commentTokens = allTokens.filter(function(t) {
+        return t.token.indexOf('Eg') === 0 && t.token.length > 50;
+    });
+
+    // Also extract API key
     var apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
     var apiKey = apiKeyMatch ? apiKeyMatch[1] : 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 
-    // Step 2: Fetch comments using YouTube's internal API
-    var commentsUrl = 'https://www.youtube.com/youtubei/v1/next?key=' + apiKey;
-    var commentsRes = await fetch(commentsUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-        body: JSON.stringify({
-            context: {
-                client: {
-                    clientName: 'WEB',
-                    clientVersion: '2.20240101.00.00',
-                    hl: 'en',
-                    gl: 'US',
-                },
+    if (debug) {
+        return {
+            comments: [],
+            debug: {
+                totalTokens: allTokens.length,
+                commentTokens: commentTokens.length,
+                tokenPaths: commentTokens.slice(0, 5).map(function(t) {
+                    return { path: t.path, tokenPrefix: t.token.substring(0, 30) };
+                }),
+                apiKey: apiKey.substring(0, 10) + '...',
             },
-            continuation: continuationToken,
-        }),
-    });
-
-    if (!commentsRes.ok) return [];
-    var commentsData = await commentsRes.json();
-
-    // Step 3: Parse the comment data
-    var comments = [];
-    var jsonStr = JSON.stringify(commentsData);
-
-    // Find all commentRenderer objects
-    var endpoints = commentsData.onResponseReceivedEndpoints || [];
-    for (var e = 0; e < endpoints.length; e++) {
-        var actions = endpoints[e].reloadContinuationItemsCommand;
-        if (!actions) actions = endpoints[e].appendContinuationItemsAction;
-        if (!actions) continue;
-
-        var contItems = actions.continuationItems || [];
-        for (var c = 0; c < contItems.length; c++) {
-            var thread = contItems[c].commentThreadRenderer;
-            if (!thread) continue;
-
-            var renderer = thread.comment && thread.comment.commentRenderer;
-            if (!renderer) continue;
-
-            var author = '';
-            if (renderer.authorText && renderer.authorText.simpleText) {
-                author = renderer.authorText.simpleText;
-            }
-
-            var text = '';
-            if (renderer.contentText && renderer.contentText.runs) {
-                text = renderer.contentText.runs.map(function(r) { return r.text; }).join('');
-            }
-
-            var likes = '';
-            if (renderer.voteCount && renderer.voteCount.simpleText) {
-                likes = renderer.voteCount.simpleText;
-            }
-
-            var time = '';
-            if (renderer.publishedTimeText && renderer.publishedTimeText.runs) {
-                time = renderer.publishedTimeText.runs.map(function(r) { return r.text; }).join('');
-            }
-
-            if (text) {
-                comments.push({
-                    author: author,
-                    text: text,
-                    likes: likes,
-                    time: time,
-                });
-            }
-
-            if (comments.length >= 20) return comments;
-        }
+        };
     }
 
-    return comments;
+    // Try each comment-looking token
+    for (var i = 0; i < commentTokens.length; i++) {
+        var comments = await fetchWithToken(commentTokens[i].token, apiKey);
+        if (comments.length > 0) return { comments: comments };
+    }
+
+    // If no Eg tokens worked, try ALL tokens
+    for (var j = 0; j < Math.min(allTokens.length, 10); j++) {
+        var comments2 = await fetchWithToken(allTokens[j].token, apiKey);
+        if (comments2.length > 0) return { comments: comments2 };
+    }
+
+    return { comments: [] };
+}
+
+function findTokens(obj, results, path) {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) {
+        for (var i = 0; i < obj.length; i++) {
+            findTokens(obj[i], results, path + '[' + i + ']');
+        }
+        return;
+    }
+    for (var key in obj) {
+        if (key === 'token' && typeof obj[key] === 'string' && obj[key].length > 20) {
+            results.push({ token: obj[key], path: path + '.' + key });
+        } else if (key === 'continuation' && typeof obj[key] === 'string' && obj[key].length > 20) {
+            results.push({ token: obj[key], path: path + '.' + key });
+        } else {
+            findTokens(obj[key], results, path + '.' + key);
+        }
+    }
+}
+
+async function fetchWithToken(token, apiKey) {
+    try {
+        var url = 'https://www.youtube.com/youtubei/v1/next?key=' + apiKey;
+        var resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            body: JSON.stringify({
+                context: {
+                    client: {
+                        clientName: 'WEB',
+                        clientVersion: '2.20240101.00.00',
+                        hl: 'en',
+                        gl: 'US',
+                    },
+                },
+                continuation: token,
+            }),
+        });
+
+        if (!resp.ok) return [];
+        var data = await resp.json();
+
+        var comments = [];
+        var endpoints = data.onResponseReceivedEndpoints || [];
+
+        for (var e = 0; e < endpoints.length; e++) {
+            var actions = endpoints[e].reloadContinuationItemsCommand
+                || endpoints[e].appendContinuationItemsAction;
+            if (!actions) continue;
+
+            var contItems = actions.continuationItems || [];
+            for (var c = 0; c < contItems.length; c++) {
+                var thread = contItems[c].commentThreadRenderer;
+                if (!thread) continue;
+
+                var renderer = thread.comment && thread.comment.commentRenderer;
+                if (!renderer) continue;
+
+                var author = (renderer.authorText && renderer.authorText.simpleText) || '';
+                var text = '';
+                if (renderer.contentText && renderer.contentText.runs) {
+                    text = renderer.contentText.runs.map(function(r) { return r.text; }).join('');
+                }
+                var likes = (renderer.voteCount && renderer.voteCount.simpleText) || '';
+                var time = '';
+                if (renderer.publishedTimeText && renderer.publishedTimeText.runs) {
+                    time = renderer.publishedTimeText.runs.map(function(r) { return r.text; }).join('');
+                }
+
+                if (text) {
+                    comments.push({ author: author, text: text, likes: likes, time: time });
+                }
+                if (comments.length >= 20) return comments;
+            }
+        }
+
+        return comments;
+    } catch (e) {
+        return [];
+    }
 }
