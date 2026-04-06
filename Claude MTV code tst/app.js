@@ -20,6 +20,7 @@ const state = {
 // ── Config ─────────────────────────────────────────────────
 const CLIP_DURATION = 30;
 const CLIP_SKIP_INTRO = 15;
+const USE_SCRAPER = true; // Use serverless scraper instead of YouTube API
 const PAIRS_PER_ARTIST = 3;  // 3 songs + 3 interviews = 6 videos, then switch
 
 // ── DOM refs ───────────────────────────────────────────────
@@ -63,7 +64,7 @@ const playlistEl = $('#playlist');
 
 // ── API Key Management ─────────────────────────────────────
 function initApiKey() {
-    if (state.apiKey) {
+    if (USE_SCRAPER || state.apiKey) {
         apiKeyBanner.classList.add('hidden');
     } else {
         apiKeyBanner.classList.remove('hidden');
@@ -214,12 +215,42 @@ function clearOldCache() {
     }
 }
 
-// ── YouTube Data API Search (with cache) ───────────────────
+// ── YouTube Search (scraper or API, with cache) ────────────
 async function ytSearch(query, maxResults = 5) {
     const cacheKey = `search_${query}_${maxResults}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
+    let results;
+
+    if (USE_SCRAPER) {
+        results = await ytSearchScraper(query, maxResults);
+    } else {
+        results = await ytSearchAPI(query, maxResults);
+    }
+
+    cacheSet(cacheKey, results);
+    return results;
+}
+
+async function ytSearchScraper(query, maxResults) {
+    const url = `/api/search?q=${encodeURIComponent(query)}&max=${maxResults}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Search failed (${res.status})`);
+    }
+    const data = await res.json();
+    return (data.items || []).map((item) => ({
+        id: item.id,
+        title: decodeHTMLEntities(item.title || ''),
+        thumbnail: item.thumbnail || '',
+        channel: item.channel || '',
+        description: item.description || '',
+    }));
+}
+
+async function ytSearchAPI(query, maxResults) {
     const url = new URL('https://www.googleapis.com/youtube/v3/search');
     url.searchParams.set('part', 'snippet');
     url.searchParams.set('q', query);
@@ -234,15 +265,13 @@ async function ytSearch(query, maxResults = 5) {
         throw new Error(err.error?.message || `YouTube API error ${res.status}`);
     }
     const data = await res.json();
-    const results = (data.items || []).map((item) => ({
+    return (data.items || []).map((item) => ({
         id: item.id.videoId,
         title: decodeHTMLEntities(item.snippet.title),
         thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
         channel: item.snippet.channelTitle,
         description: item.snippet.description,
     }));
-    cacheSet(cacheKey, results);
-    return results;
 }
 
 function decodeHTMLEntities(text) {
@@ -493,7 +522,7 @@ async function maybeAutoQueueSimilar() {
 
 // ── DIVE IN — start fresh ──────────────────────────────────
 async function deepDiveSearch(query) {
-    if (!state.apiKey) {
+    if (!USE_SCRAPER && !state.apiKey) {
         apiKeyBanner.classList.remove('hidden');
         apiKeyInput.focus();
         return;
@@ -561,7 +590,7 @@ async function deepDiveSearch(query) {
 
 // ── ADD — append to queue ──────────────────────────────────
 async function addToQueue(query) {
-    if (!state.apiKey) {
+    if (!USE_SCRAPER && !state.apiKey) {
         apiKeyBanner.classList.remove('hidden');
         apiKeyInput.focus();
         return;
@@ -945,9 +974,7 @@ function showTikTokFallback(artist, url) {
 const TRENDING_REFRESH_MS = 15 * 60 * 1000; // 15 minutes
 
 async function fetchTrendingArtists() {
-    if (!state.apiKey) return;
-
-    // Check cache first (trending cached for 1 hour)
+    // Check cache first
     const trendingCacheKey = 'trending_music_us';
     const cachedTrending = cacheGet(trendingCacheKey);
     if (cachedTrending) {
@@ -956,11 +983,37 @@ async function fetchTrendingArtists() {
         return;
     }
 
+    if (USE_SCRAPER) {
+        await fetchTrendingScraper(trendingCacheKey);
+    } else {
+        if (!state.apiKey) return;
+        await fetchTrendingAPI(trendingCacheKey);
+    }
+}
+
+async function fetchTrendingScraper(cacheKey) {
+    try {
+        const res = await fetch('/api/trending');
+        if (!res.ok) {
+            showTrendingFallback('error');
+            return;
+        }
+        const data = await res.json();
+        state.trendingArtists = (data.artists || []).slice(0, 12);
+        cacheSet(cacheKey, state.trendingArtists);
+        renderTrendingGrid();
+    } catch (err) {
+        console.warn('Trending scrape failed:', err);
+        showTrendingFallback('error');
+    }
+}
+
+async function fetchTrendingAPI(cacheKey) {
     try {
         const url = new URL('https://www.googleapis.com/youtube/v3/videos');
         url.searchParams.set('part', 'snippet');
         url.searchParams.set('chart', 'mostPopular');
-        url.searchParams.set('videoCategoryId', '10'); // Music
+        url.searchParams.set('videoCategoryId', '10');
         url.searchParams.set('regionCode', 'US');
         url.searchParams.set('maxResults', '24');
         url.searchParams.set('key', state.apiKey);
@@ -968,18 +1021,12 @@ async function fetchTrendingArtists() {
         const res = await fetch(url);
         const data = await res.json();
 
-        // Check for quota or other API errors
         if (data.error) {
             const msg = data.error.message || '';
-            if (msg.includes('quota')) {
-                showTrendingFallback('quota');
-            } else {
-                showTrendingFallback('error');
-            }
+            showTrendingFallback(msg.includes('quota') ? 'quota' : 'error');
             return;
         }
 
-        // Extract unique artists from channel names
         const seen = new Set();
         const artists = [];
 
@@ -1002,11 +1049,10 @@ async function fetchTrendingArtists() {
         }
 
         state.trendingArtists = artists.slice(0, 12);
-        cacheSet(trendingCacheKey, state.trendingArtists);
+        cacheSet(cacheKey, state.trendingArtists);
         renderTrendingGrid();
     } catch (err) {
-        // Silently fail — trending is a nice-to-have
-        console.warn('Trending fetch failed:', err);
+        console.warn('Trending API failed:', err);
     }
 }
 
@@ -1074,7 +1120,7 @@ function showTrendingFallback(reason) {
 }
 
 function startTrendingRefresh() {
-    if (!state.apiKey) return;
+    if (!USE_SCRAPER && !state.apiKey) return;
 
     fetchTrendingArtists();
 
