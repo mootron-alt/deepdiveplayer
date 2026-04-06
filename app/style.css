@@ -246,19 +246,17 @@ main {
     min-height: 520px;
 }
 
-.player-wrapper #player {
-    width: 100%;
-    aspect-ratio: 16 / 9;
+.player-wrapper #player,
+.player-wrapper > iframe {
+    width: 100% !important;
+    aspect-ratio: 16 / 9 !important;
+    height: auto !important;
     display: none;
 }
 
-.player-wrapper.active #player {
+.player-wrapper.active #player,
+.player-wrapper.active > iframe {
     display: block;
-}
-
-.player-wrapper #player iframe {
-    width: 100% !important;
-    height: 100% !important;
 }
 
 
