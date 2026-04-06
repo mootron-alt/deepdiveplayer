@@ -1,4 +1,4 @@
-// Scrape top YouTube comments for a video
+// Scrape top YouTube comments using continuation token
 
 module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,114 +16,124 @@ module.exports = async function handler(req, res) {
 };
 
 async function scrapeComments(videoId) {
-    var url = 'https://www.youtube.com/watch?v=' + videoId;
-
-    var response = await fetch(url, {
+    // Step 1: Load the video page to get the continuation token for comments
+    var pageUrl = 'https://www.youtube.com/watch?v=' + videoId;
+    var pageRes = await fetch(pageUrl, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
         },
     });
 
-    if (!response.ok) throw new Error('YouTube returned ' + response.status);
-    var html = await response.text();
+    if (!pageRes.ok) throw new Error('YouTube returned ' + pageRes.status);
+    var html = await pageRes.text();
 
-    // Try to find comments in ytInitialData
-    var dataMatch = html.match(/var ytInitialData = ({.*?});<\/script>/s);
-    if (!dataMatch) throw new Error('Could not parse page');
+    // Extract the continuation token for comments
+    // YouTube puts it in ytInitialData as a continuation item
+    var tokenMatch = html.match(/"continuationCommand":\{"token":"([^"]+)"[^}]*"request":"CONTINUATION_REQUEST_TYPE_WATCH_NEXT"/);
+    if (!tokenMatch) {
+        // Try alternate pattern
+        tokenMatch = html.match(/"token":"([^"]+)"[^}]*?"targetId":"comments-section"/);
+    }
+    if (!tokenMatch) {
+        // Try broader pattern — look for comment continuation tokens
+        tokenMatch = html.match(/"token":"(Eg[A-Za-z0-9_-]+)"[^}]*?"label":"[^"]*[Cc]omment/);
+    }
+    if (!tokenMatch) {
+        // Last resort: find any continuation near "comment"
+        var commentIdx = html.indexOf('comment-item-section');
+        if (commentIdx === -1) commentIdx = html.indexOf('comments-section');
+        if (commentIdx > -1) {
+            var nearby = html.substring(Math.max(0, commentIdx - 2000), commentIdx + 2000);
+            var nearToken = nearby.match(/"continuation":"([^"]+)"/);
+            if (!nearToken) nearToken = nearby.match(/"token":"([^"]+)"/);
+            if (nearToken) tokenMatch = nearToken;
+        }
+    }
 
-    var data = JSON.parse(dataMatch[1]);
+    if (!tokenMatch) return [];
+
+    var continuationToken = tokenMatch[1];
+
+    // Also extract API key from page
+    var apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+    var apiKey = apiKeyMatch ? apiKeyMatch[1] : 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+
+    // Step 2: Fetch comments using YouTube's internal API
+    var commentsUrl = 'https://www.youtube.com/youtubei/v1/next?key=' + apiKey;
+    var commentsRes = await fetch(commentsUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        body: JSON.stringify({
+            context: {
+                client: {
+                    clientName: 'WEB',
+                    clientVersion: '2.20240101.00.00',
+                    hl: 'en',
+                    gl: 'US',
+                },
+            },
+            continuation: continuationToken,
+        }),
+    });
+
+    if (!commentsRes.ok) return [];
+    var commentsData = await commentsRes.json();
+
+    // Step 3: Parse the comment data
     var comments = [];
+    var jsonStr = JSON.stringify(commentsData);
 
-    // Method 1: Look in engagementPanels for comments
-    var panels = data.engagementPanels || [];
-    for (var p = 0; p < panels.length; p++) {
-        var panel = panels[p].engagementPanelSectionListRenderer;
-        if (!panel) continue;
-        var content = panel.content;
-        if (!content) continue;
+    // Find all commentRenderer objects
+    var endpoints = commentsData.onResponseReceivedEndpoints || [];
+    for (var e = 0; e < endpoints.length; e++) {
+        var actions = endpoints[e].reloadContinuationItemsCommand;
+        if (!actions) actions = endpoints[e].appendContinuationItemsAction;
+        if (!actions) continue;
 
-        // Navigate through the structured comment data
-        var section = content.sectionListRenderer;
-        if (!section) continue;
-        var sContents = section.contents || [];
-        for (var s = 0; s < sContents.length; s++) {
-            var itemSection = sContents[s].itemSectionRenderer;
-            if (!itemSection) continue;
-            var items = itemSection.contents || [];
-            for (var i = 0; i < items.length; i++) {
-                var comment = extractComment(items[i]);
-                if (comment) comments.push(comment);
-                if (comments.length >= 15) return comments;
+        var contItems = actions.continuationItems || [];
+        for (var c = 0; c < contItems.length; c++) {
+            var thread = contItems[c].commentThreadRenderer;
+            if (!thread) continue;
+
+            var renderer = thread.comment && thread.comment.commentRenderer;
+            if (!renderer) continue;
+
+            var author = '';
+            if (renderer.authorText && renderer.authorText.simpleText) {
+                author = renderer.authorText.simpleText;
             }
-        }
-    }
 
-    // Method 2: Look in frameworks/two-column for comment section
-    var results = data.contents && data.contents.twoColumnWatchNextResults;
-    if (results && results.results && results.results.results) {
-        var rContents = results.results.results.contents || [];
-        for (var r = 0; r < rContents.length; r++) {
-            var itemSection2 = rContents[r].itemSectionRenderer;
-            if (!itemSection2) continue;
-            var items2 = itemSection2.contents || [];
-            for (var i2 = 0; i2 < items2.length; i2++) {
-                var comment2 = extractComment(items2[i2]);
-                if (comment2) comments.push(comment2);
-                if (comments.length >= 15) return comments;
+            var text = '';
+            if (renderer.contentText && renderer.contentText.runs) {
+                text = renderer.contentText.runs.map(function(r) { return r.text; }).join('');
             }
-        }
-    }
 
-    // Method 3: Deep search the entire JSON for comment threads
-    if (comments.length === 0) {
-        var jsonStr = JSON.stringify(data);
-        var commentMatches = jsonStr.match(/"commentRenderer":\{[^}]*"contentText"/g);
-        if (commentMatches && commentMatches.length > 0) {
-            // Comments exist but are lazy loaded — we can't get them without a second request
-            // Return empty with a note
-            return [];
+            var likes = '';
+            if (renderer.voteCount && renderer.voteCount.simpleText) {
+                likes = renderer.voteCount.simpleText;
+            }
+
+            var time = '';
+            if (renderer.publishedTimeText && renderer.publishedTimeText.runs) {
+                time = renderer.publishedTimeText.runs.map(function(r) { return r.text; }).join('');
+            }
+
+            if (text) {
+                comments.push({
+                    author: author,
+                    text: text,
+                    likes: likes,
+                    time: time,
+                });
+            }
+
+            if (comments.length >= 20) return comments;
         }
     }
 
     return comments;
-}
-
-function extractComment(item) {
-    var renderer = item.commentThreadRenderer;
-    if (!renderer) return null;
-
-    var comment = renderer.comment && renderer.comment.commentRenderer;
-    if (!comment) return null;
-
-    var authorName = '';
-    if (comment.authorText && comment.authorText.simpleText) {
-        authorName = comment.authorText.simpleText;
-    }
-
-    var text = '';
-    if (comment.contentText && comment.contentText.runs) {
-        text = comment.contentText.runs.map(function(r) { return r.text; }).join('');
-    } else if (comment.contentText && comment.contentText.simpleText) {
-        text = comment.contentText.simpleText;
-    }
-
-    var likes = '';
-    if (comment.voteCount && comment.voteCount.simpleText) {
-        likes = comment.voteCount.simpleText;
-    }
-
-    var time = '';
-    if (comment.publishedTimeText && comment.publishedTimeText.runs) {
-        time = comment.publishedTimeText.runs.map(function(r) { return r.text; }).join('');
-    }
-
-    if (!text) return null;
-
-    return {
-        author: authorName,
-        text: text,
-        likes: likes,
-        time: time,
-    };
 }
