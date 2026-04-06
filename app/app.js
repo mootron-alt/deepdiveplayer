@@ -51,7 +51,6 @@ const socialArtistName = $('#social-artist-name');
 const socialIg = $('#social-ig');
 const socialTiktok = $('#social-tiktok');
 const socialX = $('#social-x');
-const socialSpotify = $('#social-spotify');
 const commentsContainer = $('#comments-container');
 const articlesSection = $('#articles-section');
 const articlesGrid = $('#articles-grid');
@@ -974,7 +973,6 @@ function updateSocialSidebar(artist, videoId) {
         socialIg.href = `https://www.instagram.com/explore/tags/${encoded.replace(/%20/g, '')}/`;
         socialTiktok.href = `https://www.tiktok.com/search?q=${encoded}`;
         socialX.href = `https://x.com/search?q=${encoded}&f=top`;
-        socialSpotify.href = `https://open.spotify.com/search/${encoded}`;
     }
 
     // Load comments for the current video
