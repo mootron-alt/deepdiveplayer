@@ -53,6 +53,8 @@ const socialTiktok = $('#social-tiktok');
 const socialX = $('#social-x');
 const socialSpotify = $('#social-spotify');
 const commentsContainer = $('#comments-container');
+const articlesSection = $('#articles-section');
+const articlesGrid = $('#articles-grid');
 const controls = $('#controls');
 const prevBtn = $('#prev-btn');
 const playPauseBtn = $('#play-pause-btn');
@@ -837,6 +839,7 @@ function playItem(index) {
     // Update social sidebar
     if (item.artist) {
         updateSocialSidebar(item.artist, item.id);
+        loadArticles(item.artist);
     }
 
     renderPlaylist();
@@ -895,6 +898,66 @@ searchInput.addEventListener('keydown', (e) => {
         if (q && !state.isSearching) deepDiveSearch(q);
     }
 });
+
+// ── Articles (Complex.com) ─────────────────────────────────
+let lastArticleArtist = '';
+
+async function loadArticles(artist) {
+    if (!artist || artist === lastArticleArtist) return;
+    lastArticleArtist = artist;
+
+    articlesSection.classList.remove('hidden');
+    articlesGrid.innerHTML = '<span class="articles-empty">Loading articles...</span>';
+
+    const cacheKey = `articles_${artist}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+        renderArticles(cached, artist);
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/articles?artist=${encodeURIComponent(artist)}`);
+        const data = await res.json();
+        const articles = data.articles || [];
+        if (articles.length > 0) cacheSet(cacheKey, articles);
+        renderArticles(articles, artist);
+    } catch {
+        renderArticles([], artist);
+    }
+}
+
+function renderArticles(articles, artist) {
+    articlesGrid.innerHTML = '';
+
+    if (articles.length === 0) {
+        // Show a direct link to Complex search as fallback
+        articlesGrid.innerHTML = `
+            <a class="article-card" href="https://www.complex.com/search?q=${encodeURIComponent(artist)}" target="_blank" rel="noopener">
+                <div class="article-card-body">
+                    <span class="article-card-title">Search Complex for ${artist}</span>
+                    <span class="article-card-source">Complex &#8599;</span>
+                </div>
+            </a>
+        `;
+        return;
+    }
+
+    for (const article of articles) {
+        const card = document.createElement('a');
+        card.className = 'article-card';
+        card.href = article.url;
+        card.target = '_blank';
+        card.rel = 'noopener';
+        card.innerHTML = `
+            <div class="article-card-body">
+                <span class="article-card-title">${escapeHtml(article.title)}</span>
+                <span class="article-card-source">${article.source || 'Complex'} &#8599;</span>
+            </div>
+        `;
+        articlesGrid.appendChild(card);
+    }
+}
 
 // ── Social Sidebar ─────────────────────────────────────────
 let lastSocialArtist = '';
