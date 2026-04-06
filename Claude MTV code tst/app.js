@@ -909,8 +909,18 @@ async function fetchTrendingArtists() {
         url.searchParams.set('key', state.apiKey);
 
         const res = await fetch(url);
-        if (!res.ok) return;
         const data = await res.json();
+
+        // Check for quota or other API errors
+        if (data.error) {
+            const msg = data.error.message || '';
+            if (msg.includes('quota')) {
+                showTrendingFallback('quota');
+            } else {
+                showTrendingFallback('error');
+            }
+            return;
+        }
 
         // Extract unique artists from channel names
         const seen = new Set();
@@ -978,6 +988,31 @@ function renderTrendingGrid() {
         trendingGrid.classList.remove('fade-out');
         trendingGrid.classList.add('fade-in');
     }, 400);
+}
+
+function showTrendingFallback(reason) {
+    placeholderFallback.classList.add('hidden');
+    trendingContainer.classList.remove('hidden');
+    playerWrapper.classList.add('expanded');
+
+    if (reason === 'quota') {
+        trendingGrid.innerHTML = `
+            <div class="trending-fallback">
+                <div class="trending-fallback-icon">&#9888;</div>
+                <p class="trending-fallback-title">API Quota Reached</p>
+                <p class="trending-fallback-text">YouTube's daily limit has been hit. Trending artists will refresh when the quota resets at midnight PT.</p>
+                <p class="trending-fallback-text">You can still search for any artist above!</p>
+            </div>
+        `;
+    } else {
+        trendingGrid.innerHTML = `
+            <div class="trending-fallback">
+                <div class="trending-fallback-icon">&#9888;</div>
+                <p class="trending-fallback-title">Couldn't load trending artists</p>
+                <p class="trending-fallback-text">Search for any artist above to start your deep dive!</p>
+            </div>
+        `;
+    }
 }
 
 function startTrendingRefresh() {
